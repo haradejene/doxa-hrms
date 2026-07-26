@@ -1,118 +1,174 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowRight, Briefcase, Users, Award, Sparkles, MapPin, Clock, Heart, Zap, Globe } from 'lucide-react'
+import { ArrowRight, Users, Heart, Zap, Globe, Sparkles, Award, ChevronRight } from 'lucide-react'
 
-const perks = [
-  { icon: Heart, label: 'Health & Wellness', desc: 'Full medical, dental, and vision coverage for you and your family.', color: 'text-rose-500', bg: 'bg-rose-50' },
-  { icon: Zap, label: 'Career Growth', desc: 'Mentorship, learning budget, and clear promotion pathways.', color: 'text-amber-500', bg: 'bg-amber-50' },
-  { icon: Globe, label: 'Remote-Friendly', desc: 'Flexible hybrid work with home office setup stipend.', color: 'text-teal-500', bg: 'bg-teal-50' },
-  { icon: Award, label: 'Competitive Pay', desc: 'Market-leading salaries plus equity and performance bonuses.', color: 'text-violet-500', bg: 'bg-violet-50' },
+const values = [
+  { icon: Heart, label: 'People First', desc: 'We put humans at the centre of every decision we make — from product to culture.' },
+  { icon: Zap, label: 'Bias for Action', desc: 'We move fast, test ideas early, and learn from everything we ship.' },
+  { icon: Globe, label: 'Remote-Inclusive', desc: 'Great work happens everywhere. We support flexibility for every timezone.' },
+  { icon: Award, label: 'Grow Together', desc: 'We invest heavily in learning, mentorship, and transparent career progression.' },
+]
+
+const departments = [
+  { name: 'Engineering', count: 6, icon: '⚙️' },
+  { name: 'Product & Design', count: 3, icon: '🎨' },
+  { name: 'Marketing', count: 2, icon: '📣' },
+  { name: 'Operations', count: 4, icon: '🔄' },
 ]
 
 export default function PublicHome() {
   return (
     <div>
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-violet-950 via-violet-900 to-indigo-900 text-white min-h-[85vh] flex items-center">
-        {/* Background decorations */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 right-20 w-80 h-80 bg-violet-400 rounded-full opacity-10 blur-3xl" />
-          <div className="absolute bottom-20 left-10 w-96 h-96 bg-indigo-400 rounded-full opacity-10 blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-500 rounded-full opacity-5 blur-3xl" />
-          {/* Grid pattern */}
-          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
+
+      {/* ── Hero ── */}
+      <section className="relative overflow-hidden pt-20 pb-28 px-4">
+        {/* subtle radial glow */}
+        <div className="pointer-events-none absolute inset-0 flex items-start justify-center">
+          <div className="w-[600px] h-[400px] rounded-full bg-violet-100 opacity-50 blur-3xl -mt-20" />
         </div>
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 w-full">
-          <div className="max-w-3xl">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 mb-8">
-              <Sparkles className="h-4 w-4 text-violet-300" />
-              <span className="text-sm text-violet-200 font-medium">We're actively hiring · 15+ open roles</span>
-              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-            </div>
+        <div className="relative max-w-4xl mx-auto text-center">
+          <div className="inline-flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-full px-4 py-1.5 mb-8">
+            <Sparkles className="h-3.5 w-3.5 text-violet-500" />
+            <span className="text-xs font-semibold text-violet-700">We're hiring · 15+ open roles</span>
+            <span className="relative flex h-2 w-2 ml-1">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+          </div>
 
-            <h1 className="text-5xl md:text-7xl font-black leading-none tracking-tight mb-6">
-              Build Your<br />
-              <span className="bg-gradient-to-r from-violet-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">
-                Career at Doxa
-              </span>
-            </h1>
+          <h1 className="text-5xl md:text-7xl font-black text-gray-900 leading-none tracking-tight mb-5">
+            Come build the{' '}
+            <span className="text-violet-600">future</span>
+            <br />of HR with us.
+          </h1>
 
-            <p className="text-lg text-violet-200 mb-10 leading-relaxed max-w-xl">
-              We're building the next generation of HR technology. Join a team of passionate innovators who believe great workplaces start with great people.
-            </p>
+          <p className="text-lg text-gray-500 max-w-xl mx-auto leading-relaxed mb-10">
+            Doxa is on a mission to make every workplace great — starting with great people. Find where you fit and help us build something that matters.
+          </p>
 
-            <div className="flex flex-wrap gap-4">
-              <Link
-                href="/careers/jobs"
-                className="group inline-flex items-center gap-2 bg-white text-violet-800 px-7 py-3.5 rounded-2xl font-bold hover:bg-violet-50 transition-all duration-300 shadow-2xl shadow-violet-900/50"
-              >
-                View Open Positions
-                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-              </Link>
-              <Link
-                href="#perks"
-                className="inline-flex items-center gap-2 border border-white/25 text-white px-7 py-3.5 rounded-2xl font-semibold hover:bg-white/10 transition-all duration-300"
-              >
-                Why Doxa?
-              </Link>
-            </div>
-
-            {/* Mini stats */}
-            <div className="flex flex-wrap gap-8 mt-14">
-              {[
-                { value: '15+', label: 'Open positions' },
-                { value: '50+', label: 'Team members' },
-                { value: '4.8★', label: 'Glassdoor rating' },
-              ].map(s => (
-                <div key={s.label}>
-                  <p className="text-3xl font-black text-white">{s.value}</p>
-                  <p className="text-sm text-violet-300 mt-0.5">{s.label}</p>
-                </div>
-              ))}
-            </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link
+              href="/careers/jobs"
+              className="group inline-flex items-center gap-2 bg-gray-900 text-white px-7 py-3.5 rounded-xl font-semibold hover:bg-violet-600 transition-colors shadow-lg"
+            >
+              Browse open roles
+              <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+            <Link
+              href="#culture"
+              className="inline-flex items-center gap-2 text-gray-600 border border-gray-200 px-7 py-3.5 rounded-xl font-semibold hover:border-gray-300 hover:bg-gray-50 transition-colors"
+            >
+              Our culture
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* Perks */}
-      <section id="perks" className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <h2 className="text-4xl font-black text-gray-900">Why people love working here</h2>
-            <p className="text-gray-500 mt-3 text-lg">We invest in our team because great people build great products.</p>
+      {/* ── Social proof numbers ── */}
+      <section className="border-y border-gray-100 py-10 px-4">
+        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+          {[
+            { value: '50+', label: 'Team members' },
+            { value: '15+', label: 'Open roles' },
+            { value: '4.8★', label: 'Glassdoor rating' },
+            { value: '12', label: 'Countries' },
+          ].map(stat => (
+            <div key={stat.label}>
+              <p className="text-3xl font-black text-gray-900">{stat.value}</p>
+              <p className="text-sm text-gray-400 mt-1 font-medium">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Browse by department ── */}
+      <section className="py-20 px-4 bg-gray-50">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-10">
+            <h2 className="text-3xl font-black text-gray-900">Browse by team</h2>
+            <p className="text-gray-500 mt-2">Find the right fit for your skills and interests.</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {perks.map((perk) => (
-              <div key={perk.label} className="group p-6 rounded-2xl border border-gray-100 hover:border-violet-200 hover:shadow-lg transition-all duration-300">
-                <div className={`w-12 h-12 rounded-xl ${perk.bg} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                  <perk.icon className={`h-6 w-6 ${perk.color}`} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {departments.map((dept) => (
+              <Link
+                key={dept.name}
+                href={`/careers/jobs?department=${encodeURIComponent(dept.name)}`}
+                className="group flex items-center justify-between bg-white rounded-2xl border border-gray-100 px-6 py-5 hover:border-violet-200 hover:shadow-lg transition-all duration-200"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="text-2xl">{dept.icon}</span>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">{dept.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{dept.count} open roles</p>
+                  </div>
                 </div>
-                <h3 className="text-base font-bold text-gray-900 mb-2">{perk.label}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{perk.desc}</p>
+                <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-violet-500 group-hover:translate-x-0.5 transition-all" />
+              </Link>
+            ))}
+          </div>
+          <div className="mt-6 text-center">
+            <Link href="/careers/jobs" className="text-sm font-semibold text-violet-600 hover:text-violet-700 transition-colors inline-flex items-center gap-1">
+              See all open positions <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Our values ── */}
+      <section id="culture" className="py-20 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-12 text-center">
+            <h2 className="text-3xl font-black text-gray-900">What we believe in</h2>
+            <p className="text-gray-500 mt-2 max-w-lg mx-auto">Our values aren't words on a wall — they're how we make decisions every day.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {values.map((v, i) => (
+              <div key={v.label} className="group flex gap-5 p-6 rounded-2xl border border-gray-100 hover:border-violet-200 hover:shadow-md transition-all duration-200 bg-white">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                  i === 0 ? 'bg-rose-50' : i === 1 ? 'bg-amber-50' : i === 2 ? 'bg-teal-50' : 'bg-violet-50'
+                }`}>
+                  <v.icon className={`h-5 w-5 ${
+                    i === 0 ? 'text-rose-500' : i === 1 ? 'text-amber-500' : i === 2 ? 'text-teal-500' : 'text-violet-500'
+                  }`} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 mb-1">{v.label}</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">{v.desc}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-20 bg-gray-50">
-        <div className="max-w-3xl mx-auto px-4 text-center">
-          <h2 className="text-4xl font-black text-gray-900 mb-4">Ready to join the team?</h2>
-          <p className="text-gray-500 mb-8">Browse our open roles and find the perfect fit for your next chapter.</p>
-          <Link
-            href="/careers/jobs"
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-violet-600 to-purple-600 text-white px-8 py-4 rounded-2xl font-bold hover:from-violet-700 hover:to-purple-700 transition-all duration-300 shadow-xl shadow-purple-500/30 hover:shadow-purple-500/40 hover:scale-[1.02]"
-          >
-            <Briefcase className="h-5 w-5" />
-            Browse Open Positions
-            <ArrowRight className="h-5 w-5" />
-          </Link>
+      {/* ── CTA Banner ── */}
+      <section className="py-20 px-4">
+        <div className="max-w-4xl mx-auto bg-gray-900 rounded-3xl p-12 text-center relative overflow-hidden">
+          <div className="absolute -top-10 -left-10 w-32 h-32 bg-violet-500 rounded-full opacity-20 blur-2xl" />
+          <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-purple-500 rounded-full opacity-20 blur-2xl" />
+          <div className="relative">
+            <h2 className="text-3xl font-black text-white mb-3">Don't see your role?</h2>
+            <p className="text-gray-400 mb-8 max-w-md mx-auto">We're always looking for talented people. Send us your CV and we'll reach out when the right opportunity opens up.</p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Link
+                href="/careers/jobs"
+                className="inline-flex items-center gap-2 bg-violet-600 text-white px-7 py-3.5 rounded-xl font-semibold hover:bg-violet-700 transition-colors"
+              >
+                View all roles <ArrowRight className="h-4 w-4" />
+              </Link>
+              <a
+                href="mailto:careers@doxa.com"
+                className="inline-flex items-center gap-2 text-white border border-white/20 px-7 py-3.5 rounded-xl font-semibold hover:bg-white/10 transition-colors"
+              >
+                Send your CV
+              </a>
+            </div>
+          </div>
         </div>
       </section>
+
     </div>
   )
 }
