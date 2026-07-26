@@ -52,4 +52,42 @@ class AttendanceController extends Controller
 
         return response()->json(['message' => 'Attendance recorded successfully', 'record' => $record]);
     }
+
+    public function bulkStore(Request $request)
+    {
+        $validated = $request->validate([
+            'date' => 'required|date',
+            'records' => 'required|array',
+            'records.*.employee_id' => 'required|exists:employees,id',
+            'records.*.status' => 'required|in:present,absent,late,half_day,holiday,leave',
+            'records.*.check_in' => 'nullable|date_format:H:i',
+            'records.*.check_out' => 'nullable|date_format:H:i',
+        ]);
+
+        $date = $validated['date'];
+        
+        foreach ($validated['records'] as $rec) {
+            $data = $rec;
+            $data['date'] = $date;
+            
+            if (!empty($data['check_in'])) {
+                $data['check_in'] = $date . ' ' . $data['check_in'] . ':00';
+            } else {
+                $data['check_in'] = null;
+            }
+            
+            if (!empty($data['check_out'])) {
+                $data['check_out'] = $date . ' ' . $data['check_out'] . ':00';
+            } else {
+                $data['check_out'] = null;
+            }
+
+            AttendanceRecord::updateOrCreate(
+                ['employee_id' => $data['employee_id'], 'date' => $date],
+                $data
+            );
+        }
+
+        return response()->json(['message' => 'Bulk attendance recorded successfully']);
+    }
 }

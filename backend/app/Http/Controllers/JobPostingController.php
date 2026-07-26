@@ -44,10 +44,10 @@ class JobPostingController extends Controller
         $validated['status'] = 'published';
         
         // Use an authenticated user or fallback to 1
-        $validated['created_by'] = auth()->id() ?? 1;
+        $validated['created_by'] = auth()->id() ?: 1;
         
         // Defaults for fields not sent by the frontend
-        $validated['position_id'] = $request->input('position_id', 1);
+        $validated['position_id'] = $request->input('position_id') ?: 1;
         $validated['experience_level'] = 'mid';
 
         $jobPosting = JobPosting::create($validated);
