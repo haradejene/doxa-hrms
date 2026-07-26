@@ -9,7 +9,7 @@ interface HeaderProps {
 }
 
 const pageTitles: Record<string, { title: string; desc: string }> = {
-  '/dashboard': { title: 'Dashboard', desc: 'Welcome back! Here's an overview of your workforce.' },
+  '/dashboard': { title: 'Dashboard', desc: 'Welcome back! Here\'s an overview of your workforce.' },
   '/employees': { title: 'Employees', desc: 'Manage and view all employee records.' },
   '/recruitment': { title: 'Recruitment', desc: 'Track job postings and applicants.' },
   '/payroll': { title: 'Payroll', desc: 'Process salaries and manage compensation.' },
