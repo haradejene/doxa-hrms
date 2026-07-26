@@ -6,6 +6,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\JobPostingController;
 use App\Http\Controllers\ApplicationController;
 use App\Http\Controllers\InterviewController;
+use App\Http\Controllers\DashboardController;
 
 // Public routes - NO authentication required
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -19,6 +20,10 @@ Route::get('/jobs/{id}', [JobPostingController::class, 'show']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
+    
+    // Dashboard routes
+    Route::get('/dashboard/metrics', [DashboardController::class, 'metrics']);
+    Route::get('/dashboard/activities', [DashboardController::class, 'activities']);
     
     // Employee routes
     Route::get('/employees', [EmployeeController::class, 'index']);
