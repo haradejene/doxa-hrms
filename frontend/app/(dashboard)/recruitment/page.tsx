@@ -30,7 +30,7 @@ export default function RecruitmentPage() {
   const fetchJobs = async () => {
     try {
       setLoading(true)
-      const response = await api.get('/api/job-postings')
+      const response = await api.get('/api/jobs')
       setJobs(response.data)
     } catch (error) {
       console.error('Failed to fetch jobs:', error)

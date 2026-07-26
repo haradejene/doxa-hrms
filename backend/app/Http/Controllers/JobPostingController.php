@@ -15,7 +15,10 @@ class JobPostingController extends Controller
 
     public function show($id)
     {
-        $jobPosting = JobPosting::with(['department', 'position'])->findOrFail($id);
+        $jobPosting = JobPosting::with(['department', 'position'])
+            ->where('id', $id)
+            ->orWhere('slug', $id)
+            ->firstOrFail();
         return response()->json($jobPosting);
     }
 

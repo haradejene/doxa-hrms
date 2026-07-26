@@ -2,13 +2,13 @@
 
 namespace Database\Seeders;
 
-use App\Models\Employee;
+use App\Models\JobPosting;
 use Illuminate\Database\Seeder;
 
-class EmployeeSeeder extends Seeder
+class JobPostingSeeder extends Seeder
 {
     public function run(): void
     {
-        Employee::factory()->count(50)->create();
+        JobPosting::factory()->count(15)->create();
     }
 }

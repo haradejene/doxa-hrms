@@ -1,11 +1,19 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Search, Download, DollarSign, Users, TrendingUp, Clock } from 'lucide-react'
+import { DollarSign, FileText, Download } from 'lucide-react'
 import api from '@/services/api'
 
+interface PayrollRecord {
+  id: number
+  employee_name: string
+  period: string
+  amount: number
+  status: 'processed' | 'pending'
+}
+
 export default function PayrollPage() {
-  const [payroll, setPayroll] = useState([])
+  const [records, setRecords] = useState<PayrollRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -15,7 +23,7 @@ export default function PayrollPage() {
   const fetchPayroll = async () => {
     try {
       const response = await api.get('/api/payroll')
-      setPayroll(response.data)
+      setRecords(response.data)
     } catch (error) {
       console.error('Failed to fetch payroll:', error)
     } finally {
@@ -36,26 +44,54 @@ export default function PayrollPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Payroll</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage payroll processing and employee compensation</p>
+          <p className="mt-1 text-sm text-gray-500">Manage employee salaries, bonuses, and deductions</p>
         </div>
-        <div className="flex gap-2">
-          <button className="inline-flex items-center rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-purple-50 hover:border-purple-200 transition-colors">
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </button>
-          <button className="inline-flex items-center rounded-lg bg-gradient-to-r from-purple-600 to-purple-500 px-4 py-2 text-sm font-medium text-white hover:from-purple-700 hover:to-purple-600 transition-all duration-300 shadow-md hover:shadow-lg">
-            <Plus className="mr-2 h-4 w-4" />
-            Generate Payroll
-          </button>
-        </div>
+        <button className="inline-flex items-center rounded-lg bg-gradient-to-r from-purple-600 to-purple-500 px-4 py-2 text-sm font-medium text-white hover:from-purple-700 hover:to-purple-600 transition-all duration-300 shadow-md">
+          <DollarSign className="mr-2 h-4 w-4" />
+          Run Payroll
+        </button>
       </div>
-      
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
-        <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <DollarSign className="h-8 w-8 text-purple-600" />
-        </div>
-        <h3 className="text-lg font-medium text-gray-900">Payroll Module</h3>
-        <p className="text-gray-500 text-sm mt-1">Coming soon - Connected to backend</p>
+
+      <div className="overflow-hidden rounded-xl bg-white border border-gray-100 shadow-sm">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Employee</th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Period</th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Amount</th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+              <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Payslip</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 bg-white">
+            {records.map((record) => (
+              <tr key={record.id} className="hover:bg-purple-50/30 transition-colors">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  {record.employee_name}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {record.period}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">
+                  ${record.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                    record.status === 'processed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {record.status}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <button className="text-purple-600 hover:text-purple-900 inline-flex items-center">
+                    <Download className="h-4 w-4 mr-1" />
+                    Download
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )

@@ -42,7 +42,20 @@ export default function JobDetailPage() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/jobs/${slug}`)
       if (!response.ok) throw new Error('Job not found')
       const data = await response.json()
-      setJob(data)
+      
+      // Parse text fields into arrays if they are strings
+      const parseField = (field: any) => {
+        if (!field) return [];
+        if (Array.isArray(field)) return field;
+        return typeof field === 'string' ? field.split('\n').filter(Boolean) : [];
+      };
+
+      setJob({
+        ...data,
+        requirements: parseField(data.requirements),
+        responsibilities: parseField(data.responsibilities),
+        benefits: parseField(data.benefits)
+      })
     } catch (err) {
       setError('Failed to load job details')
     } finally {
@@ -137,7 +150,7 @@ export default function JobDetailPage() {
         {/* Apply Button */}
         <div className="mt-6 pt-6 border-t border-gray-100 flex justify-center">
           <Link
-            href={`/apply/${job.id}`}
+            href={`/careers/apply/${job.id}`}
             className="bg-gradient-to-r from-purple-600 to-purple-500 text-white px-10 py-3 rounded-lg font-semibold hover:from-purple-700 hover:to-purple-600 transition-all duration-300 shadow-md hover:shadow-lg"
           >
             Apply Now
@@ -204,7 +217,7 @@ export default function JobDetailPage() {
         <div className="pt-6 border-t border-gray-100 text-center">
           <p className="text-gray-600 mb-4">Ready to join our team?</p>
           <Link
-            href={`/apply/${job.id}`}
+            href={`/careers/apply/${job.id}`}
             className="inline-flex items-center bg-gradient-to-r from-purple-600 to-purple-500 text-white px-8 py-3 rounded-lg font-semibold hover:from-purple-700 hover:to-purple-600 transition-all duration-300 shadow-md hover:shadow-lg"
           >
             Apply for this position

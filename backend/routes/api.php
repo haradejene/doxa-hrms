@@ -7,6 +7,9 @@ use App\Http\Controllers\JobPostingController;
 use App\Http\Controllers\ApplicationController;
 use App\Http\Controllers\InterviewController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\PerformanceController;
 
 // Public routes - NO authentication required
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -44,4 +47,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/interviews', [InterviewController::class, 'index']);
     Route::get('/interviews/{id}', [InterviewController::class, 'show']);
     Route::post('/interviews', [InterviewController::class, 'store']);
+    
+    // Foundational modules
+    Route::get('/attendance', [AttendanceController::class, 'index']);
+    Route::get('/payroll', [PayrollController::class, 'index']);
+    Route::get('/performance', [PerformanceController::class, 'index']);
 });
