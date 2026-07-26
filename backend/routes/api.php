@@ -51,6 +51,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Foundational modules
     Route::get('/attendance', [AttendanceController::class, 'index']);
+    Route::post('/attendance', [AttendanceController::class, 'store']);
     Route::get('/payroll', [PayrollController::class, 'index']);
     Route::post('/payroll/process', [PayrollController::class, 'process']);
     Route::get('/performance', [PerformanceController::class, 'index']);

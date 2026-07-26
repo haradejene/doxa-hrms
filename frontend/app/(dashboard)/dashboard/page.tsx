@@ -5,7 +5,7 @@ import { Users, Briefcase, FileCheck, CalendarOff, TrendingUp, UserPlus, ArrowRi
 import api from '@/services/api'
 import Link from 'next/link'
 import { StatCard } from '@/components/dashboard/stat-card'
-import { AttendanceChart } from '@/components/dashboard/attendance-chart'
+import AttendanceChart from '@/components/dashboard/attendance-chart'
 
 interface DashboardStats {
   totalEmployees: number

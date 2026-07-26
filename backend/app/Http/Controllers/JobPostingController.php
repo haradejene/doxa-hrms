@@ -27,15 +27,28 @@ class JobPostingController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
-            'requirements' => 'required|string',
-            'department_id' => 'required|exists:departments,id',
-            'position_id' => 'required|exists:positions,id',
+            'requirements' => 'required|array',
+            'responsibilities' => 'required|array',
+            'department_id' => 'required',
+            'location' => 'required|string',
             'type' => 'required|in:full_time,part_time,contract,remote,hybrid',
             'salary_min' => 'nullable|numeric',
             'salary_max' => 'nullable|numeric',
             'closing_date' => 'nullable|date',
-            'status' => 'in:draft,published,closed,on_hold'
         ]);
+
+        $validated['requirements'] = implode("\n", $validated['requirements']);
+        $validated['responsibilities'] = implode("\n", $validated['responsibilities']);
+        $validated['slug'] = \Illuminate\Support\Str::slug($validated['title']) . '-' . time();
+        $validated['posted_date'] = now();
+        $validated['status'] = 'published';
+        
+        // Use an authenticated user or fallback to 1
+        $validated['created_by'] = auth()->id() ?? 1;
+        
+        // Defaults for fields not sent by the frontend
+        $validated['position_id'] = $request->input('position_id', 1);
+        $validated['experience_level'] = 'mid';
 
         $jobPosting = JobPosting::create($validated);
         return response()->json($jobPosting, 201);
