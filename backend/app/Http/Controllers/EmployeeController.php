@@ -25,13 +25,24 @@ class EmployeeController extends Controller
         $validated = $request->validate([
             'first_name' => 'required|string',
             'last_name' => 'required|string',
-            'email' => 'required|email|unique:employees',
+            'email' => 'required|email|unique:employees|unique:users,email',
             'employee_number' => 'required|unique:employees',
             'hire_date' => 'required|date',
             'department_id' => 'nullable|exists:departments,id',
             'position_id' => 'nullable|exists:positions,id',
-            'user_id' => 'required|exists:users,id',
+            // Other fields the frontend might send
+            'phone' => 'nullable|string',
+            'employment_type' => 'nullable|in:full_time,part_time,contract,internship,temporary,consultant',
+            'base_salary' => 'nullable|numeric',
         ]);
+
+        $user = \App\Models\User::create([
+            'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+            'email' => $validated['email'],
+            'password' => bcrypt('password123'),
+        ]);
+
+        $validated['user_id'] = $user->id;
 
         $employee = Employee::create($validated);
         return response()->json($employee, 201);
