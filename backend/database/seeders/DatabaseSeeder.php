@@ -13,7 +13,7 @@ class DatabaseSeeder extends Seeder
             PositionSeeder::class,
             LeaveTypeSeeder::class,
             UserSeeder::class,
-            // EmployeeSeeder::class, // Uncomment after creating employees
+            EmployeeSeeder::class,
         ]);
     }
 }
