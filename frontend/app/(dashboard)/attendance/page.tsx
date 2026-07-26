@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Calendar, Clock, CheckCircle, XCircle, Search } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock, Download } from 'lucide-react'
 import api from '@/services/api'
 
 interface AttendanceRecord {
@@ -13,85 +13,95 @@ interface AttendanceRecord {
   check_out: string | null
 }
 
+const statusConfig = {
+  present: { icon: CheckCircle2, label: 'Present', class: 'bg-emerald-50 text-emerald-700 border-emerald-100', iconClass: 'text-emerald-500' },
+  late: { icon: Clock, label: 'Late', class: 'bg-amber-50 text-amber-700 border-amber-100', iconClass: 'text-amber-500' },
+  absent: { icon: XCircle, label: 'Absent', class: 'bg-red-50 text-red-700 border-red-100', iconClass: 'text-red-500' },
+}
+
 export default function AttendancePage() {
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchAttendance()
+    api.get('/api/attendance').then(r => setRecords(r.data)).finally(() => setLoading(false))
   }, [])
 
-  const fetchAttendance = async () => {
-    try {
-      const response = await api.get('/api/attendance')
-      setRecords(response.data)
-    } catch (error) {
-      console.error('Failed to fetch attendance:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const present = records.filter(r => r.status === 'present').length
+  const late = records.filter(r => r.status === 'late').length
+  const absent = records.filter(r => r.status === 'absent').length
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'present': return <CheckCircle className="h-4 w-4 text-green-500 mr-1.5" />
-      case 'late': return <Clock className="h-4 w-4 text-yellow-500 mr-1.5" />
-      case 'absent': return <XCircle className="h-4 w-4 text-red-500 mr-1.5" />
-      default: return null
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
-      </div>
-    )
-  }
+  if (loading) return (
+    <div className="flex justify-center items-center min-h-[400px]">
+      <div className="w-10 h-10 border-[3px] border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+    </div>
+  )
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Attendance</h1>
-          <p className="mt-1 text-sm text-gray-500">Monitor employee daily attendance and logs</p>
-        </div>
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'Present', value: present, bg: 'bg-emerald-500', text: 'text-emerald-600', icon: CheckCircle2 },
+          { label: 'Late', value: late, bg: 'bg-amber-500', text: 'text-amber-600', icon: Clock },
+          { label: 'Absent', value: absent, bg: 'bg-red-500', text: 'text-red-600', icon: XCircle },
+        ].map(s => (
+          <div key={s.label} className="card p-5 flex items-center gap-4">
+            <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center`}>
+              <s.icon className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{s.value}</p>
+              <p className="text-xs text-gray-400 font-medium">{s.label}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="overflow-hidden rounded-xl bg-white border border-gray-100 shadow-sm">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Employee</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Check In</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Check Out</th>
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Today's Attendance Log</h3>
+          <button className="btn-secondary text-xs py-1.5 px-3">
+            <Download className="h-3.5 w-3.5" /> Export
+          </button>
+        </div>
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-100">
+              <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Employee</th>
+              <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+              <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Check In</th>
+              <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Check Out</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
-            {records.map((record) => (
-              <tr key={record.id} className="hover:bg-purple-50/30 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {record.employee_name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {record.date}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center text-sm font-medium capitalize text-gray-700">
-                    {getStatusIcon(record.status)}
-                    {record.status}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {record.check_in || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {record.check_out || '-'}
-                </td>
-              </tr>
-            ))}
+          <tbody className="divide-y divide-gray-50">
+            {records.map((record) => {
+              const sc = statusConfig[record.status]
+              const Icon = sc.icon
+              return (
+                <tr key={record.id} className="hover:bg-violet-50/20 transition-colors">
+                  <td className="px-6 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+                        {record.employee_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                      </div>
+                      <span className="text-sm font-semibold text-gray-900">{record.employee_name}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-3.5 text-sm text-gray-500">{record.date}</td>
+                  <td className="px-6 py-3.5">
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${sc.class}`}>
+                      <Icon className={`h-3.5 w-3.5 ${sc.iconClass}`} />
+                      {sc.label}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3.5 text-sm font-mono text-gray-600">{record.check_in ?? <span className="text-gray-300">—</span>}</td>
+                  <td className="px-6 py-3.5 text-sm font-mono text-gray-600">{record.check_out ?? <span className="text-gray-300">—</span>}</td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

@@ -1,71 +1,116 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowRight, Briefcase, Users, Award, Sparkles, TrendingUp } from 'lucide-react'
+import { ArrowRight, Briefcase, Users, Award, Sparkles, MapPin, Clock, Heart, Zap, Globe } from 'lucide-react'
+
+const perks = [
+  { icon: Heart, label: 'Health & Wellness', desc: 'Full medical, dental, and vision coverage for you and your family.', color: 'text-rose-500', bg: 'bg-rose-50' },
+  { icon: Zap, label: 'Career Growth', desc: 'Mentorship, learning budget, and clear promotion pathways.', color: 'text-amber-500', bg: 'bg-amber-50' },
+  { icon: Globe, label: 'Remote-Friendly', desc: 'Flexible hybrid work with home office setup stipend.', color: 'text-teal-500', bg: 'bg-teal-50' },
+  { icon: Award, label: 'Competitive Pay', desc: 'Market-leading salaries plus equity and performance bonuses.', color: 'text-violet-500', bg: 'bg-violet-50' },
+]
 
 export default function PublicHome() {
   return (
     <div>
-      {/* Hero Section with Purple Gradient */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-purple-900 via-purple-700 to-indigo-800 text-white">
-        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" />
-        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-400 rounded-full opacity-10 blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-400 rounded-full opacity-10 blur-3xl" />
-        
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+      {/* Hero */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-violet-950 via-violet-900 to-indigo-900 text-white min-h-[85vh] flex items-center">
+        {/* Background decorations */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute top-20 right-20 w-80 h-80 bg-violet-400 rounded-full opacity-10 blur-3xl" />
+          <div className="absolute bottom-20 left-10 w-96 h-96 bg-indigo-400 rounded-full opacity-10 blur-3xl" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-500 rounded-full opacity-5 blur-3xl" />
+          {/* Grid pattern */}
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
+        </div>
+
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 w-full">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-1.5 mb-6 border border-white/10">
-              <Sparkles className="h-4 w-4 text-purple-300" />
-              <span className="text-sm text-purple-100">🚀 12+ positions open now</span>
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 mb-8">
+              <Sparkles className="h-4 w-4 text-violet-300" />
+              <span className="text-sm text-violet-200 font-medium">We're actively hiring · 15+ open roles</span>
+              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
             </div>
-            
-            <h1 className="text-5xl md:text-6xl font-bold leading-tight mb-6">
-              Build Your Career at
-              <span className="bg-gradient-to-r from-purple-200 to-pink-200 bg-clip-text text-transparent"> Doxa</span>
+
+            <h1 className="text-5xl md:text-7xl font-black leading-none tracking-tight mb-6">
+              Build Your<br />
+              <span className="bg-gradient-to-r from-violet-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">
+                Career at Doxa
+              </span>
             </h1>
-            
-            <p className="text-xl text-purple-200 mb-8 leading-relaxed">
-              We're building the future of HR technology. Join a team of passionate 
-              innovators shaping the way companies manage their people.
+
+            <p className="text-lg text-violet-200 mb-10 leading-relaxed max-w-xl">
+              We're building the next generation of HR technology. Join a team of passionate innovators who believe great workplaces start with great people.
             </p>
-            
+
             <div className="flex flex-wrap gap-4">
               <Link
                 href="/careers/jobs"
-                className="inline-flex items-center bg-white text-purple-700 px-8 py-3 rounded-lg font-semibold hover:bg-purple-50 transition-all duration-300 shadow-lg hover:shadow-xl group"
+                className="group inline-flex items-center gap-2 bg-white text-violet-800 px-7 py-3.5 rounded-2xl font-bold hover:bg-violet-50 transition-all duration-300 shadow-2xl shadow-violet-900/50"
               >
                 View Open Positions
-                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </Link>
               <Link
-                href="/about"
-                className="inline-flex items-center border border-white/30 text-white px-8 py-3 rounded-lg font-semibold hover:bg-white/10 transition-all duration-300"
+                href="#perks"
+                className="inline-flex items-center gap-2 border border-white/25 text-white px-7 py-3.5 rounded-2xl font-semibold hover:bg-white/10 transition-all duration-300"
               >
-                Learn About Us
+                Why Doxa?
               </Link>
+            </div>
+
+            {/* Mini stats */}
+            <div className="flex flex-wrap gap-8 mt-14">
+              {[
+                { value: '15+', label: 'Open positions' },
+                { value: '50+', label: 'Team members' },
+                { value: '4.8★', label: 'Glassdoor rating' },
+              ].map(s => (
+                <div key={s.label}>
+                  <p className="text-3xl font-black text-white">{s.value}</p>
+                  <p className="text-sm text-violet-300 mt-0.5">{s.label}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { icon: Briefcase, label: 'Open Positions', value: '12+' },
-            { icon: Users, label: 'Team Members', value: '156' },
-            { icon: Award, label: 'Awards Won', value: '8' },
-          ].map((stat, i) => (
-            <div key={i} className="bg-white rounded-xl shadow-lg p-6 text-center border border-gray-100 hover:border-purple-200 transition-all duration-300 hover:shadow-xl">
-              <div className="flex justify-center mb-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-purple-50 rounded-lg flex items-center justify-center">
-                  <stat.icon className="h-6 w-6 text-purple-600" />
+      {/* Perks */}
+      <section id="perks" className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-14">
+            <h2 className="text-4xl font-black text-gray-900">Why people love working here</h2>
+            <p className="text-gray-500 mt-3 text-lg">We invest in our team because great people build great products.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {perks.map((perk) => (
+              <div key={perk.label} className="group p-6 rounded-2xl border border-gray-100 hover:border-violet-200 hover:shadow-lg transition-all duration-300">
+                <div className={`w-12 h-12 rounded-xl ${perk.bg} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                  <perk.icon className={`h-6 w-6 ${perk.color}`} />
                 </div>
+                <h3 className="text-base font-bold text-gray-900 mb-2">{perk.label}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{perk.desc}</p>
               </div>
-              <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-              <p className="text-sm text-gray-500">{stat.label}</p>
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="py-20 bg-gray-50">
+        <div className="max-w-3xl mx-auto px-4 text-center">
+          <h2 className="text-4xl font-black text-gray-900 mb-4">Ready to join the team?</h2>
+          <p className="text-gray-500 mb-8">Browse our open roles and find the perfect fit for your next chapter.</p>
+          <Link
+            href="/careers/jobs"
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-violet-600 to-purple-600 text-white px-8 py-4 rounded-2xl font-bold hover:from-violet-700 hover:to-purple-700 transition-all duration-300 shadow-xl shadow-purple-500/30 hover:shadow-purple-500/40 hover:scale-[1.02]"
+          >
+            <Briefcase className="h-5 w-5" />
+            Browse Open Positions
+            <ArrowRight className="h-5 w-5" />
+          </Link>
         </div>
       </section>
     </div>

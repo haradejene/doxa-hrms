@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Filter, Search, MoreVertical, Eye, Edit, Trash2, Users } from 'lucide-react'
+import { Plus, Search, Users, MapPin, Clock, Eye, Edit, Trash2, ChevronRight } from 'lucide-react'
 import api from '@/services/api'
 import Link from 'next/link'
+import { formatDistanceToNow } from 'date-fns'
 
 interface JobPosting {
   id: number
@@ -12,9 +13,24 @@ interface JobPosting {
   location: string
   type: string
   applications_count: number
-  status: 'published' | 'draft' | 'closed'
+  status: 'published' | 'draft' | 'closed' | 'on_hold'
   posted_date: string
   slug: string
+}
+
+const statusConfig: Record<string, { label: string; class: string; dot: string }> = {
+  published: { label: 'Live', class: 'bg-emerald-50 text-emerald-700 border-emerald-100', dot: 'bg-emerald-500' },
+  draft: { label: 'Draft', class: 'bg-amber-50 text-amber-700 border-amber-100', dot: 'bg-amber-500' },
+  closed: { label: 'Closed', class: 'bg-gray-100 text-gray-600 border-gray-200', dot: 'bg-gray-400' },
+  on_hold: { label: 'On Hold', class: 'bg-blue-50 text-blue-700 border-blue-100', dot: 'bg-blue-400' },
+}
+
+const typeColors: Record<string, string> = {
+  full_time: 'bg-violet-50 text-violet-700',
+  part_time: 'bg-indigo-50 text-indigo-700',
+  contract: 'bg-cyan-50 text-cyan-700',
+  remote: 'bg-teal-50 text-teal-700',
+  hybrid: 'bg-purple-50 text-purple-700',
 }
 
 export default function RecruitmentPage() {
@@ -23,9 +39,7 @@ export default function RecruitmentPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
 
-  useEffect(() => {
-    fetchJobs()
-  }, [])
+  useEffect(() => { fetchJobs() }, [])
 
   const fetchJobs = async () => {
     try {
@@ -41,120 +55,158 @@ export default function RecruitmentPage() {
 
   const filteredJobs = jobs.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.department?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+      job.department?.name?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = filterStatus === 'all' || job.status === filterStatus
     return matchesSearch && matchesStatus
   })
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'published': return 'bg-green-100 text-green-700'
-      case 'draft': return 'bg-yellow-100 text-yellow-700'
-      case 'closed': return 'bg-gray-100 text-gray-700'
-      default: return 'bg-gray-100 text-gray-700'
-    }
+  const stats = {
+    total: jobs.length,
+    live: jobs.filter(j => j.status === 'published').length,
+    draft: jobs.filter(j => j.status === 'draft').length,
+    applications: jobs.reduce((sum, j) => sum + (j.applications_count || 0), 0),
   }
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+      <div className="flex justify-center items-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-[3px] border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+          <p className="text-sm text-gray-400 font-medium">Loading jobs...</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div>
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Recruitment</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage job postings and track applicants</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex gap-3 flex-wrap">
+          {[
+            { label: 'Total Jobs', value: stats.total, color: 'text-gray-700' },
+            { label: 'Live', value: stats.live, color: 'text-emerald-600' },
+            { label: 'Draft', value: stats.draft, color: 'text-amber-600' },
+            { label: 'Applications', value: stats.applications, color: 'text-violet-600' },
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-xl border border-gray-100 px-3 py-1.5">
+              <p className="text-xs text-gray-400">{s.label}</p>
+              <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+            </div>
+          ))}
         </div>
-        <Link
-          href="/dashboard/recruitment/new"
-          className="inline-flex items-center rounded-lg bg-gradient-to-r from-purple-600 to-purple-500 px-4 py-2 text-sm font-medium text-white hover:from-purple-700 hover:to-purple-600 transition-all duration-300 shadow-md hover:shadow-lg"
-        >
-          <Plus className="mr-2 h-4 w-4" />
+        <Link href="/recruitment/new" className="btn-primary self-start sm:self-auto">
+          <Plus className="h-4 w-4" />
           Post New Job
         </Link>
       </div>
 
       {/* Filters */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+      <div className="card p-4 flex flex-col sm:flex-row gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="search"
-            placeholder="Search jobs..."
+            placeholder="Search by title or department..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-lg border border-gray-200 pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+            className="input-field pl-9"
           />
         </div>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="rounded-lg border border-gray-200 px-4 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-        >
-          <option value="all">All Status</option>
-          <option value="published">Published</option>
-          <option value="draft">Draft</option>
-          <option value="closed">Closed</option>
-        </select>
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          {['all', 'published', 'draft', 'closed'].map(status => (
+            <button
+              key={status}
+              onClick={() => setFilterStatus(status)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all capitalize ${
+                filterStatus === status ? 'bg-white shadow-sm text-violet-600' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {status === 'all' ? 'All' : statusConfig[status]?.label ?? status}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Job List */}
-      <div className="overflow-hidden rounded-xl bg-white border border-gray-100">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Job Title</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Department</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Location</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Applicants</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-              <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
-            {filteredJobs.map((job) => (
-              <tr key={job.id} className="hover:bg-purple-50/30 transition-colors">
-                <td className="px-6 py-4">
-                  <div className="text-sm font-medium text-gray-900">{job.title}</div>
-                  <div className="text-xs text-gray-500">{job.type?.replace('_', ' ')}</div>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">{job.department?.name || 'N/A'}</td>
-                <td className="px-6 py-4 text-sm text-gray-500">{job.location || 'Remote'}</td>
-                <td className="px-6 py-4 text-sm text-gray-900">
-                  <span className="inline-flex items-center gap-1">
-                    <Users className="h-3 w-3 text-gray-400" />
-                    {job.applications_count || 0}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusColor(job.status)}`}>
-                    {job.status?.charAt(0).toUpperCase() + job.status?.slice(1)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button className="rounded-lg p-1 text-gray-400 hover:bg-purple-100 hover:text-purple-600 transition-colors">
+      {/* Job Cards */}
+      <div className="grid grid-cols-1 gap-4">
+        {filteredJobs.map((job) => {
+          const status = statusConfig[job.status] ?? { label: job.status, class: 'bg-gray-100 text-gray-600 border-gray-200', dot: 'bg-gray-400' }
+          const typeClass = typeColors[job.type] ?? 'bg-gray-100 text-gray-600'
+          return (
+            <div key={job.id} className="card p-5 hover:shadow-md hover:border-violet-200 transition-all duration-200 group">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full ${typeClass}`}>
+                      {job.type?.replace('_', ' ')}
+                    </span>
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex items-center gap-1.5 ${status.class}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                      {status.label}
+                    </span>
+                  </div>
+
+                  <h3 className="text-base font-bold text-gray-900 group-hover:text-violet-700 transition-colors mb-1">
+                    {job.title}
+                  </h3>
+
+                  <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                    <span className="flex items-center gap-1.5">
+                      <div className="w-4 h-4 rounded bg-violet-50 flex items-center justify-center">
+                        <Users className="h-2.5 w-2.5 text-violet-500" />
+                      </div>
+                      {job.department?.name ?? 'N/A'}
+                    </span>
+                    {job.location && (
+                      <span className="flex items-center gap-1.5">
+                        <div className="w-4 h-4 rounded bg-blue-50 flex items-center justify-center">
+                          <MapPin className="h-2.5 w-2.5 text-blue-500" />
+                        </div>
+                        {job.location}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1.5">
+                      <div className="w-4 h-4 rounded bg-gray-100 flex items-center justify-center">
+                        <Clock className="h-2.5 w-2.5 text-gray-400" />
+                      </div>
+                      {job.posted_date ? formatDistanceToNow(new Date(job.posted_date), { addSuffix: true }) : 'N/A'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-gray-900">{job.applications_count ?? 0}</p>
+                    <p className="text-xs text-gray-400">applicants</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button className="p-2 rounded-lg text-gray-400 hover:bg-violet-50 hover:text-violet-600 transition-colors">
                       <Eye className="h-4 w-4" />
                     </button>
-                    <button className="rounded-lg p-1 text-gray-400 hover:bg-purple-100 hover:text-purple-600 transition-colors">
+                    <button className="p-2 rounded-lg text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors">
                       <Edit className="h-4 w-4" />
                     </button>
-                    <button className="rounded-lg p-1 text-gray-400 hover:bg-red-100 hover:text-red-600 transition-colors">
+                    <button className="p-2 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
+
+      {filteredJobs.length === 0 && (
+        <div className="card py-16 text-center">
+          <div className="w-16 h-16 bg-violet-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Search className="h-8 w-8 text-violet-300" />
+          </div>
+          <p className="text-base font-semibold text-gray-700">No jobs found</p>
+          <p className="text-sm text-gray-400 mt-1">Try adjusting your filters or post a new job.</p>
+        </div>
+      )}
     </div>
   )
 }

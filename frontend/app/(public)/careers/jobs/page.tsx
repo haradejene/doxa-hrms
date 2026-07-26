@@ -2,18 +2,28 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Search, MapPin, Briefcase, Clock, Filter, X, ArrowRight } from 'lucide-react'
+import { Search, MapPin, Briefcase, Clock, Filter, X, ArrowRight, ChevronDown } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 interface Job {
   id: number
   title: string
-  department: string
+  department: { name: string } | string
   location: string
   type: string
   posted_date: string
   slug: string
   description: string
+  salary_min?: number
+  salary_max?: number
+}
+
+const typeColors: Record<string, string> = {
+  full_time: 'bg-violet-100 text-violet-700',
+  part_time: 'bg-indigo-100 text-indigo-700',
+  contract: 'bg-cyan-100 text-cyan-700',
+  remote: 'bg-teal-100 text-teal-700',
+  hybrid: 'bg-purple-100 text-purple-700',
 }
 
 export default function JobsPage() {
@@ -23,19 +33,16 @@ export default function JobsPage() {
   const [filters, setFilters] = useState({ type: '', location: '' })
   const [showFilters, setShowFilters] = useState(false)
 
-  useEffect(() => {
-    fetchJobs()
-  }, [searchTerm, filters])
+  useEffect(() => { fetchJobs() }, [searchTerm, filters])
 
   const fetchJobs = async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams({
-        search: searchTerm,
+        ...(searchTerm && { search: searchTerm }),
         ...(filters.type && { type: filters.type }),
         ...(filters.location && { location: filters.location }),
       })
-      
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/jobs?${params}`)
       const data = await response.json()
       setJobs(data)
@@ -46,171 +53,166 @@ export default function JobsPage() {
     }
   }
 
+  const getDeptName = (dept: Job['department']) =>
+    typeof dept === 'string' ? dept : dept?.name ?? 'N/A'
+
   const clearFilters = () => {
     setSearchTerm('')
     setFilters({ type: '', location: '' })
   }
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="relative">
-          <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
-        </div>
-      </div>
-    )
-  }
+  const hasFilters = searchTerm || filters.type || filters.location
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Open Positions</h1>
-        <p className="text-gray-500 mt-1">Find your next career opportunity at Doxa</p>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Hero */}
+      <div className="bg-gradient-to-br from-violet-950 to-indigo-900 text-white py-16 px-4">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-5xl font-black mb-3">Open Positions</h1>
+          <p className="text-violet-300 text-lg mb-10">Find your next opportunity and join a team that cares about its people.</p>
 
-      {/* Search and Filters */}
-      <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+          {/* Search Bar */}
+          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-3 flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-violet-300" />
               <input
                 type="text"
-                placeholder="Search by title, department, or keyword..."
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                placeholder="Search job titles, departments..."
+                className="w-full bg-transparent pl-10 pr-4 py-2.5 text-white placeholder:text-violet-400 outline-none text-sm"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-          </div>
-          <div className="flex gap-2">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="inline-flex items-center px-4 py-2.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-gray-600"
+              className="flex items-center gap-2 bg-white/15 hover:bg-white/25 border border-white/20 rounded-xl px-4 py-2.5 text-sm text-white font-medium transition-colors"
             >
-              <Filter className="h-4 w-4 mr-2" />
+              <Filter className="h-4 w-4" />
               Filters
-              {Object.values(filters).some(v => v) && (
-                <span className="ml-2 w-2 h-2 bg-purple-600 rounded-full" />
-              )}
+              {hasFilters && <span className="w-2 h-2 bg-emerald-400 rounded-full" />}
+              <ChevronDown className={`h-4 w-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
             </button>
-            {Object.values(filters).some(v => v) && (
-              <button
-                onClick={clearFilters}
-                className="inline-flex items-center px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700"
-              >
-                <X className="h-4 w-4 mr-1" />
-                Clear
-              </button>
-            )}
           </div>
+
+          {/* Filters */}
+          {showFilters && (
+            <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 mt-3 flex flex-col sm:flex-row gap-3">
+              <select
+                value={filters.type}
+                onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                className="flex-1 bg-white/10 border border-white/20 rounded-xl text-white text-sm px-3 py-2 outline-none"
+              >
+                <option value="">All Types</option>
+                <option value="full_time">Full Time</option>
+                <option value="part_time">Part Time</option>
+                <option value="contract">Contract</option>
+                <option value="remote">Remote</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
+              <select
+                value={filters.location}
+                onChange={(e) => setFilters({ ...filters, location: e.target.value })}
+                className="flex-1 bg-white/10 border border-white/20 rounded-xl text-white text-sm px-3 py-2 outline-none"
+              >
+                <option value="">All Locations</option>
+                <option value="remote">Remote</option>
+                <option value="nyc">New York</option>
+                <option value="sf">San Francisco</option>
+                <option value="london">London</option>
+              </select>
+              {hasFilters && (
+                <button onClick={clearFilters} className="flex items-center gap-1.5 text-sm text-violet-300 hover:text-white transition-colors px-3">
+                  <X className="h-4 w-4" /> Clear
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Job List */}
+      <div className="max-w-4xl mx-auto px-4 py-10">
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-sm text-gray-500">
+            Showing <span className="font-bold text-gray-900">{jobs.length}</span> positions
+          </p>
+          {hasFilters && (
+            <button onClick={clearFilters} className="text-xs text-violet-600 hover:text-violet-700 font-medium flex items-center gap-1">
+              <X className="h-3.5 w-3.5" /> Clear filters
+            </button>
+          )}
         </div>
 
-        {/* Filter dropdown */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <select
-              className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              value={filters.type}
-              onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-            >
-              <option value="">All Types</option>
-              <option value="full_time">Full Time</option>
-              <option value="part_time">Part Time</option>
-              <option value="contract">Contract</option>
-              <option value="remote">Remote</option>
-              <option value="hybrid">Hybrid</option>
-            </select>
-            <select
-              className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              value={filters.location}
-              onChange={(e) => setFilters({ ...filters, location: e.target.value })}
-            >
-              <option value="">All Locations</option>
-              <option value="remote">Remote</option>
-              <option value="nyc">New York</option>
-              <option value="sf">San Francisco</option>
-              <option value="london">London</option>
-            </select>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-10 h-10 border-[3px] border-violet-200 border-t-violet-600 rounded-full animate-spin mb-3" />
+            <p className="text-sm text-gray-400">Finding opportunities...</p>
+          </div>
+        ) : jobs.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-2xl border border-gray-100">
+            <div className="w-16 h-16 bg-violet-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Briefcase className="h-8 w-8 text-violet-300" />
+            </div>
+            <h3 className="text-base font-bold text-gray-800">No positions found</h3>
+            <p className="text-sm text-gray-400 mt-1">Try adjusting your filters</p>
+            <button onClick={clearFilters} className="mt-4 text-sm text-violet-600 font-semibold hover:underline">Clear all filters</button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {jobs.map((job) => {
+              const typeClass = typeColors[job.type] ?? 'bg-gray-100 text-gray-600'
+              return (
+                <Link
+                  key={job.id}
+                  href={`/careers/jobs/${job.slug || job.id}`}
+                  className="block bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl hover:border-violet-200 transition-all duration-300 group"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${typeClass}`}>
+                          {job.type?.replace('_', ' ')}
+                        </span>
+                        <span className="text-[11px] font-medium text-violet-600 bg-violet-50 border border-violet-100 px-2.5 py-0.5 rounded-full">
+                          {getDeptName(job.department)}
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 group-hover:text-violet-700 transition-colors mb-2">
+                        {job.title}
+                      </h3>
+                      <div className="flex flex-wrap gap-4 text-sm text-gray-400">
+                        {job.location && (
+                          <span className="flex items-center gap-1.5">
+                            <MapPin className="h-4 w-4" />{job.location}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1.5">
+                          <Clock className="h-4 w-4" />
+                          {formatDistanceToNow(new Date(job.posted_date), { addSuffix: true })}
+                        </span>
+                        {job.salary_min && job.salary_max && (
+                          <span className="font-semibold text-gray-600">
+                            ${job.salary_min.toLocaleString()} – ${job.salary_max.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      {job.description && (
+                        <p className="mt-3 text-sm text-gray-500 line-clamp-2 leading-relaxed">
+                          {job.description.replace(/<[^>]*>/g, '')}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex-shrink-0 flex sm:flex-col items-center sm:items-end gap-3">
+                      <span className="inline-flex items-center gap-1 text-sm font-bold text-violet-600 group-hover:gap-2 transition-all">
+                        Apply Now <ArrowRight className="h-4 w-4" />
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
           </div>
         )}
       </div>
-
-      {/* Results count */}
-      <div className="flex justify-between items-center mb-4">
-        <p className="text-sm text-gray-500">
-          Showing <span className="font-medium text-gray-700">{jobs.length}</span> positions
-        </p>
-      </div>
-
-      {/* Jobs List */}
-      {jobs.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
-          <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Briefcase className="h-8 w-8 text-purple-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">No jobs found</h3>
-          <p className="text-gray-500 text-sm">Try adjusting your search or filters</p>
-          <button
-            onClick={clearFilters}
-            className="mt-4 text-purple-600 font-medium hover:text-purple-700"
-          >
-            Clear all filters
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {jobs.map((job) => (
-            <Link
-              key={job.id}
-              href={`/careers/jobs/${job.slug || job.id}`}
-              className="block bg-white rounded-xl shadow-sm p-6 hover:shadow-lg transition-all duration-300 border border-gray-100 hover:border-purple-200 group"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
-                      {job.department}
-                    </span>
-                    {job.type && (
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                        {job.type.replace('_', ' ')}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">
-                    {job.title}
-                  </h3>
-                  <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-500">
-                    {job.location && (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="h-4 w-4" />
-                        {job.location}
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      Posted {formatDistanceToNow(new Date(job.posted_date), { addSuffix: true })}
-                    </span>
-                  </div>
-                  {job.description && (
-                    <p className="mt-3 text-sm text-gray-600 line-clamp-2">
-                      {job.description.replace(/<[^>]*>/g, '')}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 self-start sm:self-center">
-                  <span className="text-purple-600 font-medium text-sm group-hover:translate-x-1 transition-transform">
-                    Apply Now
-                  </span>
-                  <ArrowRight className="h-4 w-4 text-purple-600 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

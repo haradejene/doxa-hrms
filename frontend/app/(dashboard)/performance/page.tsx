@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Star, Award, TrendingUp } from 'lucide-react'
+import { Star, TrendingUp, Award, CheckCircle2, Loader2 } from 'lucide-react'
 import api from '@/services/api'
 
 interface PerformanceRecord {
@@ -13,77 +13,102 @@ interface PerformanceRecord {
   status: 'completed' | 'in_progress'
 }
 
+const avatarGradients = [
+  'from-violet-500 to-purple-600',
+  'from-blue-500 to-cyan-600',
+  'from-emerald-500 to-teal-600',
+  'from-amber-500 to-orange-500',
+  'from-rose-500 to-pink-600',
+]
+
+function ScoreRing({ score }: { score: number | null }) {
+  if (!score) return <div className="text-2xl font-bold text-gray-300">N/A</div>
+  const pct = (score / 5) * 100
+  const colors = score >= 4 ? 'text-emerald-600' : score >= 3 ? 'text-amber-600' : 'text-red-500'
+  return (
+    <div className="flex flex-col items-center">
+      <span className={`text-3xl font-black ${colors}`}>{score.toFixed(1)}</span>
+      <span className="text-xs text-gray-400">/ 5.0</span>
+    </div>
+  )
+}
+
 export default function PerformancePage() {
   const [records, setRecords] = useState<PerformanceRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchPerformance()
+    api.get('/api/performance').then(r => setRecords(r.data)).finally(() => setLoading(false))
   }, [])
 
-  const fetchPerformance = async () => {
-    try {
-      const response = await api.get('/api/performance')
-      setRecords(response.data)
-    } catch (error) {
-      console.error('Failed to fetch performance reviews:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const avgScore = records.filter(r => r.score).reduce((s, r) => s + (r.score ?? 0), 0) / (records.filter(r => r.score).length || 1)
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
-      </div>
-    )
-  }
+  if (loading) return (
+    <div className="flex justify-center items-center min-h-[400px]">
+      <div className="w-10 h-10 border-[3px] border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+    </div>
+  )
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Performance Reviews</h1>
-          <p className="mt-1 text-sm text-gray-500">Track employee goals, appraisals, and KPIs</p>
+    <div className="space-y-6">
+      {/* Top Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-2xl p-6 bg-gradient-to-br from-amber-500 to-orange-500 text-white relative overflow-hidden">
+          <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/10 rounded-full" />
+          <Star className="h-6 w-6 text-white/70 mb-2" />
+          <p className="text-3xl font-bold">{avgScore.toFixed(1)}</p>
+          <p className="text-sm text-white/70 mt-1">Avg. Score</p>
         </div>
-        <button className="inline-flex items-center rounded-lg bg-gradient-to-r from-purple-600 to-purple-500 px-4 py-2 text-sm font-medium text-white hover:from-purple-700 hover:to-purple-600 transition-all duration-300 shadow-md">
-          <Star className="mr-2 h-4 w-4" />
-          New Review
-        </button>
+        <div className="card p-6 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center">
+            <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Completed</p>
+            <p className="text-xl font-bold text-gray-900">{records.filter(r => r.status === 'completed').length}</p>
+          </div>
+        </div>
+        <div className="card p-6 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 text-blue-500" />
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">In Progress</p>
+            <p className="text-xl font-bold text-gray-900">{records.filter(r => r.status === 'in_progress').length}</p>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {records.map((record) => (
-          <div key={record.id} className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <TrendingUp className="w-24 h-24 text-purple-600" />
-            </div>
-            
-            <div className="relative">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-semibold text-gray-900 text-lg">{record.employee_name}</h3>
-                  <p className="text-sm text-gray-500">Reviewed by {record.reviewer}</p>
+      {/* Performance Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {records.map((r, i) => (
+          <div key={r.id} className="card p-6 hover:shadow-md hover:border-violet-200 transition-all duration-200 group">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${avatarGradients[i % avatarGradients.length]} flex items-center justify-center text-white text-sm font-bold`}>
+                  {r.employee_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                 </div>
-                <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                  record.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                }`}>
-                  {record.status.replace('_', ' ')}
-                </span>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">{r.employee_name}</p>
+                  <p className="text-xs text-gray-400">{r.reviewer}</p>
+                </div>
               </div>
-              
-              <div className="flex items-end justify-between mt-6">
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Overall Score</p>
-                  <div className="flex items-center gap-1">
-                    <Award className="h-5 w-5 text-purple-500" />
-                    <span className="text-2xl font-bold text-gray-900">
-                      {record.score ? `${record.score} / 5.0` : 'N/A'}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400">{record.date}</p>
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                r.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-blue-50 text-blue-700 border-blue-100'
+              }`}>
+                {r.status.replace('_', ' ')}
+              </span>
+            </div>
+
+            <div className="border-t border-gray-100 pt-4 flex items-end justify-between">
+              <ScoreRing score={r.score} />
+              <div className="flex gap-0.5">
+                {[1, 2, 3, 4, 5].map(s => (
+                  <Star
+                    key={s}
+                    className={`h-4 w-4 ${r.score && s <= Math.round(r.score) ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200'}`}
+                  />
+                ))}
               </div>
             </div>
           </div>
