@@ -6,9 +6,6 @@ import {
   Briefcase,
   CreditCard,
   CalendarCheck,
-  TrendingUp,
-  ArrowUp,
-  ArrowDown,
   UserPlus,
   FileText,
   Clock,
@@ -16,6 +13,8 @@ import {
 } from 'lucide-react'
 import api from '@/services/api'
 import Link from 'next/link'
+import { StatCard } from '@/components/dashboard/stat-card'
+import { AttendanceChart } from '@/components/dashboard/attendance-chart'
 
 interface DashboardStats {
   totalEmployees: number
@@ -33,6 +32,14 @@ interface Activity {
   time: string
   user: string
 }
+
+const mockAttendanceData = [
+  { day: 'Mon', present: 145, absent: 3, leave: 8 },
+  { day: 'Tue', present: 148, absent: 2, leave: 6 },
+  { day: 'Wed', present: 142, absent: 4, leave: 10 },
+  { day: 'Thu', present: 150, absent: 1, leave: 5 },
+  { day: 'Fri', present: 140, absent: 5, leave: 11 },
+]
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -52,6 +59,7 @@ export default function DashboardPage() {
       setActivities(activitiesResponse.data)
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error)
+      // Fallback data for development before API is fully ready
       setStats({
         totalEmployees: 156,
         openPositions: 12,
@@ -68,37 +76,6 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const StatCard = ({ title, value, icon: Icon, trend, color }: any) => {
-    const colors: Record<string, string> = {
-      blue: 'bg-blue-100 text-blue-600',
-      green: 'bg-green-100 text-green-600',
-      yellow: 'bg-yellow-100 text-yellow-600',
-      purple: 'bg-purple-100 text-purple-600',
-    }
-
-    return (
-      <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-100 hover:border-purple-200 transition-all duration-300 hover:shadow-md">
-        <div className="flex items-center">
-          <div className={`rounded-lg p-3 ${colors[color]}`}>
-            <Icon className="h-6 w-6" />
-          </div>
-          <div className="ml-4 flex-1">
-            <p className="text-sm font-medium text-gray-500">{title}</p>
-            <div className="flex items-baseline">
-              <p className="text-2xl font-semibold text-gray-900">{value}</p>
-              {trend !== undefined && (
-                <span className={`ml-2 flex items-center text-sm ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {trend >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                  {Math.abs(trend)}%
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   if (loading) {
@@ -154,32 +131,45 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Recent Activity */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-8">
-        <div className="border-b border-gray-100 px-6 py-4">
-          <h2 className="text-lg font-medium text-gray-900 flex items-center gap-2">
-            <Clock className="h-5 w-5 text-gray-400" />
-            Recent Activity
-          </h2>
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+        {/* Chart Section */}
+        <div className="lg:col-span-2">
+          <AttendanceChart data={mockAttendanceData} />
         </div>
-        <div className="divide-y divide-gray-100">
-          {activities.slice(0, 5).map((activity) => (
-            <div key={activity.id} className="px-6 py-4 flex items-start gap-3 hover:bg-purple-50/50 transition-colors">
-              <div className="w-2 h-2 rounded-full bg-purple-600 mt-2 flex-shrink-0" />
-              <div>
-                <p className="text-sm text-gray-900">{activity.message}</p>
-                <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                  <span>By: {activity.user}</span>
-                  <span>•</span>
-                  <span>{activity.time}</span>
+
+        {/* Recent Activity */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
+          <div className="border-b border-gray-100 px-6 py-4">
+            <h2 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+              <Clock className="h-5 w-5 text-gray-400" />
+              Recent Activity
+            </h2>
+          </div>
+          <div className="divide-y divide-gray-100 flex-1 overflow-y-auto">
+            {activities.slice(0, 5).map((activity) => (
+              <div key={activity.id} className="px-6 py-4 flex items-start gap-3 hover:bg-purple-50/50 transition-colors">
+                <div className="w-2 h-2 rounded-full bg-purple-600 mt-2 flex-shrink-0" />
+                <div>
+                  <p className="text-sm text-gray-900">{activity.message}</p>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                    <span>By: {activity.user}</span>
+                    <span>•</span>
+                    <span>{activity.time}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+            {activities.length === 0 && (
+              <div className="px-6 py-8 text-center text-gray-500 text-sm">
+                No recent activity.
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Quick Actions - Below Recent Activity */}
+      {/* Quick Actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Link
           href="/recruitment/new"
