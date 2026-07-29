@@ -27,7 +27,7 @@ export default function NewJobPostingPage() {
     e.preventDefault()
     setLoading(true)
     try {
-      const response = await api.post('/api/jobs', formData)
+      const response = await api.post('/api/job-postings', formData)
       router.push('/recruitment')
     } catch (error) {
       console.error('Failed to create job posting:', error)

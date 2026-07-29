@@ -146,7 +146,7 @@ export default function EmployeesPage() {
           {filteredEmployees.map((employee, i) => {
             const status = statusConfig[employee.status] ?? { label: employee.status, class: 'bg-gray-100 text-gray-600 border-gray-200' }
             return (
-              <div key={employee.id} className="card p-5 hover:shadow-md hover:border-violet-200 transition-all duration-200 group cursor-pointer">
+              <Link key={employee.id} href={`/employees/${employee.id}`} className="card p-5 hover:shadow-md hover:border-violet-200 transition-all duration-200 group block">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${avatarGradients[i % avatarGradients.length]} flex items-center justify-center text-white text-sm font-bold flex-shrink-0 group-hover:scale-105 transition-transform`}>
@@ -184,7 +184,7 @@ export default function EmployeesPage() {
                     <span className="text-xs text-gray-400 font-mono">{employee.employee_number}</span>
                   </div>
                 </div>
-              </div>
+              </Link>
             )
           })}
         </div>
@@ -203,24 +203,26 @@ export default function EmployeesPage() {
               {filteredEmployees.map((emp, i) => {
                 const status = statusConfig[emp.status] ?? { label: emp.status, class: 'bg-gray-100 text-gray-600 border-gray-200' }
                 return (
-                  <tr key={emp.id} className="hover:bg-violet-50/30 transition-colors">
-                    <td className="px-6 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${avatarGradients[i % avatarGradients.length]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
-                          {emp.first_name[0]}{emp.last_name[0]}
+                  <Link key={emp.id} href={`/employees/${emp.id}`} className="block">
+                    <tr className="hover:bg-violet-50/30 transition-colors">
+                      <td className="px-6 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${avatarGradients[i % avatarGradients.length]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
+                            {emp.first_name[0]}{emp.last_name[0]}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{emp.first_name} {emp.last_name}</p>
+                            <p className="text-xs text-gray-400">{emp.position?.title ?? 'N/A'}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{emp.first_name} {emp.last_name}</p>
-                          <p className="text-xs text-gray-400">{emp.position?.title ?? 'N/A'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-3.5 text-sm text-gray-500 hidden md:table-cell">{emp.department?.name ?? 'N/A'}</td>
-                    <td className="px-6 py-3.5 text-sm text-gray-500 hidden lg:table-cell">{emp.email}</td>
-                    <td className="px-6 py-3.5">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${status.class}`}>{status.label}</span>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-6 py-3.5 text-sm text-gray-500 hidden md:table-cell">{emp.department?.name ?? 'N/A'}</td>
+                      <td className="px-6 py-3.5 text-sm text-gray-500 hidden lg:table-cell">{emp.email}</td>
+                      <td className="px-6 py-3.5">
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${status.class}`}>{status.label}</span>
+                      </td>
+                    </tr>
+                  </Link>
                 )
               })}
             </tbody>

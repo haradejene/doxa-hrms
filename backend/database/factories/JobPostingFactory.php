@@ -15,10 +15,25 @@ class JobPostingFactory extends Factory
 
     public function definition(): array
     {
-        $title = $this->faker->jobTitle;
+        $department = Department::inRandomOrder()->first();
+        $deptId = $department->id ?? 1;
+        $deptName = $department->name ?? 'Engineering';
+
+        $titlesByDept = [
+            'Engineering' => ['Software Engineer', 'Frontend Developer', 'Backend Developer', 'DevOps Engineer', 'QA Engineer'],
+            'Human Resources' => ['HR Manager', 'Recruiter', 'HR Generalist', 'Benefits Specialist'],
+            'Finance' => ['Financial Analyst', 'Accountant', 'Finance Manager'],
+            'Marketing' => ['Marketing Specialist', 'Content Writer', 'SEO Strategist', 'Marketing Manager'],
+            'Sales' => ['Sales Representative', 'Account Executive', 'Sales Manager'],
+            'Operations' => ['Operations Manager', 'Logistics Coordinator', 'Supply Chain Analyst'],
+            'Legal' => ['Legal Counsel', 'Compliance Officer'],
+            'IT Support' => ['IT Support Specialist', 'System Administrator', 'Network Engineer'],
+        ];
+
+        $title = $this->faker->randomElement($titlesByDept[$deptName] ?? ['Staff Member', 'Associate', 'Manager']);
         
         return [
-            'department_id' => Department::inRandomOrder()->first()->id ?? 1,
+            'department_id' => $deptId,
             'position_id' => Position::inRandomOrder()->first()->id ?? 1,
             'created_by' => User::inRandomOrder()->first()->id ?? 1,
             'title' => $title,
@@ -29,9 +44,9 @@ class JobPostingFactory extends Factory
             'benefits' => $this->faker->paragraphs(1, true),
             'type' => $this->faker->randomElement(['full_time', 'part_time', 'contract', 'remote', 'hybrid']),
             'experience_level' => $this->faker->randomElement(['entry', 'junior', 'mid', 'senior', 'lead']),
-            'salary_min' => $this->faker->randomElement([50000, 60000, 70000]),
-            'salary_max' => $this->faker->randomElement([90000, 120000, 150000]),
-            'location' => $this->faker->randomElement(['remote', 'nyc', 'sf', 'london']),
+            'salary_min' => $this->faker->randomElement([20000, 30000, 40000, 50000]),
+            'salary_max' => $this->faker->randomElement([60000, 80000, 100000, 120000]),
+            'location' => $this->faker->randomElement(['Remote', 'Addis Ababa', 'Hawassa', 'Dire Dawa']),
             'posted_date' => $this->faker->dateTimeBetween('-1 month', 'now')->format('Y-m-d'),
             'status' => $this->faker->randomElement(['published', 'published', 'draft', 'closed']),
         ];

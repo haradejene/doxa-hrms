@@ -44,7 +44,7 @@ export default function RecruitmentPage() {
   const fetchJobs = async () => {
     try {
       setLoading(true)
-      const response = await api.get('/api/jobs')
+      const response = await api.get('/api/job-postings')
       setJobs(response.data)
     } catch (error) {
       console.error('Failed to fetch jobs:', error)
@@ -134,64 +134,64 @@ export default function RecruitmentPage() {
           const status = statusConfig[job.status] ?? { label: job.status, class: 'bg-gray-100 text-gray-600 border-gray-200', dot: 'bg-gray-400' }
           const typeClass = typeColors[job.type] ?? 'bg-gray-100 text-gray-600'
           return (
-            <div key={job.id} className="card p-5 hover:shadow-md hover:border-violet-200 transition-all duration-200 group">
+            <div key={job.id} className="card p-5 hover:shadow-md hover:border-violet-200 transition-all duration-200 group cursor-pointer" onClick={() => window.location.href = `/recruitment/${job.id}`}>
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full ${typeClass}`}>
-                      {job.type?.replace('_', ' ')}
-                    </span>
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex items-center gap-1.5 ${status.class}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-                      {status.label}
-                    </span>
-                  </div>
-
-                  <h3 className="text-base font-bold text-gray-900 group-hover:text-violet-700 transition-colors mb-1">
-                    {job.title}
-                  </h3>
-
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
-                    <span className="flex items-center gap-1.5">
-                      <div className="w-4 h-4 rounded bg-violet-50 flex items-center justify-center">
-                        <Users className="h-2.5 w-2.5 text-violet-500" />
-                      </div>
-                      {job.department?.name ?? 'N/A'}
-                    </span>
-                    {job.location && (
-                      <span className="flex items-center gap-1.5">
-                        <div className="w-4 h-4 rounded bg-blue-50 flex items-center justify-center">
-                          <MapPin className="h-2.5 w-2.5 text-blue-500" />
-                        </div>
-                        {job.location}
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1.5">
-                      <div className="w-4 h-4 rounded bg-gray-100 flex items-center justify-center">
-                        <Clock className="h-2.5 w-2.5 text-gray-400" />
-                      </div>
-                      {job.posted_date ? formatDistanceToNow(new Date(job.posted_date), { addSuffix: true }) : 'N/A'}
-                    </span>
-                  </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full ${typeClass}`}>
+                    {job.type?.replace('_', ' ')}
+                  </span>
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex items-center gap-1.5 ${status.class}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                    {status.label}
+                  </span>
                 </div>
 
-                <div className="flex items-center gap-3 sm:flex-col sm:items-end">
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-gray-900">{job.applications_count ?? 0}</p>
-                    <p className="text-xs text-gray-400">applicants</p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button className="p-2 rounded-lg text-gray-400 hover:bg-violet-50 hover:text-violet-600 transition-colors">
-                      <Eye className="h-4 w-4" />
-                    </button>
-                    <button className="p-2 rounded-lg text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors">
-                      <Edit className="h-4 w-4" />
-                    </button>
-                    <button className="p-2 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                <h3 className="text-base font-bold text-gray-900 group-hover:text-violet-700 transition-colors mb-1">
+                  {job.title}
+                </h3>
+
+                <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                  <span className="flex items-center gap-1.5">
+                    <div className="w-4 h-4 rounded bg-violet-50 flex items-center justify-center">
+                      <Users className="h-2.5 w-2.5 text-violet-500" />
+                    </div>
+                    {job.department?.name ?? 'N/A'}
+                  </span>
+                  {job.location && (
+                    <span className="flex items-center gap-1.5">
+                      <div className="w-4 h-4 rounded bg-blue-50 flex items-center justify-center">
+                        <MapPin className="h-2.5 w-2.5 text-blue-500" />
+                      </div>
+                      {job.location}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1.5">
+                    <div className="w-4 h-4 rounded bg-gray-100 flex items-center justify-center">
+                      <Clock className="h-2.5 w-2.5 text-gray-400" />
+                    </div>
+                    {job.posted_date ? formatDistanceToNow(new Date(job.posted_date), { addSuffix: true }) : 'N/A'}
+                  </span>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-900">{job.applications_count ?? 0}</p>
+                  <p className="text-xs text-gray-400">applicants</p>
+                </div>
+                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => window.location.href = `/recruitment/${job.id}`} className="p-2 rounded-lg text-gray-400 hover:bg-violet-50 hover:text-violet-600 transition-colors">
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  <button className="p-2 rounded-lg text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                    <Edit className="h-4 w-4" />
+                  </button>
+                  <button className="p-2 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
               </div>
             </div>
           )

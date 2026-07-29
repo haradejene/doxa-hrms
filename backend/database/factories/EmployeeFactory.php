@@ -14,9 +14,13 @@ class EmployeeFactory extends Factory
 
     public function definition(): array
     {
+        $maleNames = ['Abebe', 'Bekele', 'Dawit', 'Elias', 'Fikre', 'Girum', 'Hailu', 'Kaleb', 'Lema', 'Mulugeta', 'Natnael', 'Sisay', 'Tewodros', 'Yared', 'Zelalem'];
+        $femaleNames = ['Almaz', 'Betelhem', 'Chaltu', 'Eden', 'Fantu', 'Genet', 'Hanna', 'Kalkidan', 'Liyu', 'Makeda', 'Nardos', 'Samrawit', 'Tigist', 'Yordanos', 'Zinash'];
+        $lastNames = ['Tadesse', 'Alemu', 'Haile', 'Tesfaye', 'Assefa', 'Worku', 'Tilahun', 'Girma', 'Bekele', 'Mekonnen', 'Getachew', 'Ayele', 'Desta'];
+
         $gender = $this->faker->randomElement(['male', 'female']);
-        $firstName = $this->faker->firstName($gender);
-        $lastName = $this->faker->lastName;
+        $firstName = $gender === 'male' ? $this->faker->randomElement($maleNames) : $this->faker->randomElement($femaleNames);
+        $lastName = $this->faker->randomElement($lastNames);
         $email = strtolower($firstName . '.' . $lastName . '@doxa.com');
 
         return [
@@ -26,14 +30,14 @@ class EmployeeFactory extends Factory
             'employee_number' => 'EMP-' . $this->faker->unique()->numberBetween(1000, 9999),
             'first_name' => $firstName,
             'last_name' => $lastName,
-            'email' => $this->faker->unique()->safeEmail,
-            'personal_email' => $this->faker->unique()->safeEmail,
-            'phone' => $this->faker->phoneNumber,
+            'email' => strtolower($firstName . '.' . $lastName . $this->faker->unique()->numberBetween(1, 9999) . '@doxa.com'),
+            'personal_email' => strtolower($firstName . '.' . $lastName . $this->faker->unique()->numberBetween(1, 9999) . '@gmail.com'),
+            'phone' => '+251 9' . $this->faker->numberBetween(10, 99) . ' ' . $this->faker->numberBetween(100, 999) . ' ' . $this->faker->numberBetween(100, 999),
             'gender' => $gender,
             'hire_date' => $this->faker->dateTimeBetween('-5 years', 'now')->format('Y-m-d'),
             'employment_type' => $this->faker->randomElement(['full_time', 'full_time', 'part_time', 'contract']),
             'status' => $this->faker->randomElement(['active', 'active', 'active', 'on_leave']),
-            'base_salary' => $this->faker->randomFloat(2, 40000, 150000),
+            'base_salary' => $this->faker->randomFloat(2, 10000, 150000),
             'annual_leave_balance' => $this->faker->numberBetween(10, 25),
         ];
     }

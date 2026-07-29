@@ -19,30 +19,35 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 Route::get('/jobs', [JobPostingController::class, 'index']);
 Route::get('/jobs/{id}', [JobPostingController::class, 'show']);
 
+// Public application submission (careers portal)
+Route::post('/applications', [ApplicationController::class, 'store']);
+
 // Protected routes - Authentication required
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
-    
+
     // Dashboard routes
     Route::get('/dashboard/metrics', [DashboardController::class, 'metrics']);
     Route::get('/dashboard/activities', [DashboardController::class, 'activities']);
     Route::get('/dashboard/recent-employees', [DashboardController::class, 'recentEmployees']);
-    
+
     // Employee routes
     Route::get('/employees', [EmployeeController::class, 'index']);
     Route::get('/employees/{id}', [EmployeeController::class, 'show']);
     Route::post('/employees', [EmployeeController::class, 'store']);
-    
+    Route::put('/employees/{id}', [EmployeeController::class, 'update']);
+
     // Job Posting routes (protected)
-    Route::post('/jobs', [JobPostingController::class, 'store']);
-    Route::put('/jobs/{id}', [JobPostingController::class, 'update']);
-    Route::delete('/jobs/{id}', [JobPostingController::class, 'destroy']);
-    
-    // Application routes
+    Route::get('/job-postings', [JobPostingController::class, 'indexAll']);
+    Route::post('/job-postings', [JobPostingController::class, 'store']);
+    Route::put('/job-postings/{id}', [JobPostingController::class, 'update']);
+    Route::delete('/job-postings/{id}', [JobPostingController::class, 'destroy']);
+
+    // Application routes (protected - HR/admin only)
     Route::get('/applications', [ApplicationController::class, 'index']);
     Route::get('/applications/{id}', [ApplicationController::class, 'show']);
-    Route::post('/applications', [ApplicationController::class, 'store']);
+    Route::put('/applications/{id}', [ApplicationController::class, 'update']);
     
     // Interview routes
     Route::get('/interviews', [InterviewController::class, 'index']);

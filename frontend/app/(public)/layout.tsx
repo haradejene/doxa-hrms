@@ -31,7 +31,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
             {/* Links */}
             <nav className="hidden md:flex items-center gap-7">
               <Link href="/careers/jobs" className="text-sm font-semibold text-gray-600 hover:text-violet-600 transition-colors">Open Roles</Link>
-              <Link href="#about" className="text-sm font-semibold text-gray-600 hover:text-violet-600 transition-colors">Culture</Link>
+              <Link href="/about/culture" className="text-sm font-semibold text-gray-600 hover:text-violet-600 transition-colors">Culture</Link>
               <Link href="/login" className="text-sm font-semibold text-gray-500 hover:text-gray-800 transition-colors">Employee Login</Link>
             </nav>
 

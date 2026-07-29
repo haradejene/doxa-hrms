@@ -46,6 +46,11 @@ export const recruitmentService = {
   },
 
   // Protected endpoints (HR Admin)
+  getAllJobPostings: async (params?: { search?: string; status?: string }) => {
+    const response = await api.get<Job[]>('/api/job-postings', { params })
+    return response.data
+  },
+
   createJob: async (data: Partial<Job>) => {
     const response = await api.post<Job>('/api/job-postings', data)
     return response.data

@@ -2,6 +2,7 @@
 
 import { Bell, Menu, LogOut, Search, ChevronDown } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
+import api from '@/services/api'
 import { useState } from 'react'
 
 interface HeaderProps {
@@ -28,9 +29,15 @@ export function Header({ onMenuClick }: HeaderProps) {
     pathname === key || pathname?.startsWith(key + '/')
   )?.[1]
 
-  const handleLogout = () => {
-    localStorage.removeItem('token')
-    router.push('/login')
+  const handleLogout = async () => {
+    try {
+      await api.post('/api/auth/logout')
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      localStorage.removeItem('token')
+      window.location.href = '/login'
+    }
   }
 
   return (

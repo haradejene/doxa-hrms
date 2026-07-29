@@ -17,7 +17,10 @@ export default function ApplyPage() {
   useEffect(() => {
     if (!jobId) return
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/jobs/${jobId}`)
-      .then(r => r.json()).then(setJob).finally(() => setLoading(false))
+      .then(r => { if (!r.ok) throw new Error(); return r.json() })
+      .then(setJob)
+      .catch(() => setJob(null))
+      .finally(() => setLoading(false))
   }, [jobId])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,6 +46,21 @@ export default function ApplyPage() {
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="w-10 h-10 border-[3px] border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+    </div>
+  )
+
+  if (!job) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center text-center px-4">
+      <div>
+        <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
+          <span className="text-3xl">🔍</span>
+        </div>
+        <h2 className="text-xl font-black text-gray-900 mb-2">Position not found</h2>
+        <p className="text-gray-500 text-sm mb-6">This role may have been filled or removed.</p>
+        <Link href="/careers/jobs" className="inline-flex items-center gap-2 bg-gray-900 text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-violet-600 transition-colors">
+          Browse all roles
+        </Link>
+      </div>
     </div>
   )
 

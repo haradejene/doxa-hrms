@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowRight, Users, Heart, Zap, Globe, Sparkles, Award, ChevronRight } from 'lucide-react'
+import { ArrowRight, Users, Heart, Zap, Globe, Award, ChevronRight, Code, Palette, Megaphone, Settings } from 'lucide-react'
 
 const values = [
   { icon: Heart, label: 'People First', desc: 'We put humans at the centre of every decision we make — from product to culture.' },
@@ -11,10 +11,10 @@ const values = [
 ]
 
 const departments = [
-  { name: 'Engineering', count: 6, icon: '⚙️' },
-  { name: 'Product & Design', count: 3, icon: '🎨' },
-  { name: 'Marketing', count: 2, icon: '📣' },
-  { name: 'Operations', count: 4, icon: '🔄' },
+  { name: 'Engineering', count: 6, icon: Code, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
+  { name: 'Product & Design', count: 3, icon: Palette, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-100' },
+  { name: 'Marketing', count: 2, icon: Megaphone, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+  { name: 'Operations', count: 4, icon: Settings, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
 ]
 
 export default function PublicHome() {
@@ -29,19 +29,10 @@ export default function PublicHome() {
         </div>
 
         <div className="relative max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-full px-4 py-1.5 mb-8">
-            <Sparkles className="h-3.5 w-3.5 text-violet-500" />
-            <span className="text-xs font-semibold text-violet-700">We're hiring · 15+ open roles</span>
-            <span className="relative flex h-2 w-2 ml-1">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-          </div>
-
           <h1 className="text-5xl md:text-7xl font-black text-gray-900 leading-none tracking-tight mb-5">
             Come build the{' '}
             <span className="text-violet-600">future</span>
-            <br />of HR with us.
+            <br />with us.
           </h1>
 
           <p className="text-lg text-gray-500 max-w-xl mx-auto leading-relaxed mb-10">
@@ -98,7 +89,9 @@ export default function PublicHome() {
                 className="group flex items-center justify-between bg-white rounded-2xl border border-gray-100 px-6 py-5 hover:border-violet-200 hover:shadow-lg transition-all duration-200"
               >
                 <div className="flex items-center gap-4">
-                  <span className="text-2xl">{dept.icon}</span>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${dept.bg}`}>
+                    <dept.icon className={`h-6 w-6 ${dept.color}`} />
+                  </div>
                   <div>
                     <p className="text-sm font-bold text-gray-900">{dept.name}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{dept.count} open roles</p>

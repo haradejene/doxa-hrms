@@ -47,4 +47,37 @@ class EmployeeController extends Controller
         $employee = Employee::create($validated);
         return response()->json($employee, 201);
     }
+
+    public function update(Request $request, $id)
+    {
+        $employee = Employee::findOrFail($id);
+        
+        $validated = $request->validate([
+            'first_name' => 'sometimes|required|string',
+            'last_name' => 'sometimes|required|string',
+            'email' => 'sometimes|required|email|unique:employees,email,' . $id,
+            'phone' => 'nullable|string',
+            'employment_type' => 'nullable|string',
+            'base_salary' => 'nullable|numeric',
+            'status' => 'nullable|string',
+            'department_id' => 'nullable|exists:departments,id',
+            'position_id' => 'nullable|exists:positions,id',
+        ]);
+
+        $employee->update($validated);
+        
+        // Also update the user if needed
+        if (isset($validated['first_name']) || isset($validated['last_name'])) {
+            $firstName = $validated['first_name'] ?? $employee->first_name;
+            $lastName = $validated['last_name'] ?? $employee->last_name;
+            if ($employee->user) {
+                $employee->user->update(['name' => $firstName . ' ' . $lastName]);
+            }
+        }
+        if (isset($validated['email']) && $employee->user) {
+            $employee->user->update(['email' => $validated['email']]);
+        }
+
+        return response()->json($employee);
+    }
 }
