@@ -23,6 +23,7 @@ class Application extends Model
         'notes',
         'rating',
         'rejection_reason',
+        'applied_at',
     ];
     
     public function jobPosting()
