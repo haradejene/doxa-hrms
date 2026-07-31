@@ -37,7 +37,7 @@ export default function CulturePage() {
         
         <h2 className="text-3xl md:text-5xl font-black mb-6 relative z-10">Ready to make an impact?</h2>
         <p className="text-gray-400 max-w-xl mx-auto mb-10 text-lg relative z-10">
-          Join our growing team and help us build the future of HR technology in Ethiopia and beyond.
+          Join our growing team and help us build the future of technology in Ethiopia and beyond.
         </p>
         <Link
           href="/careers/jobs"
