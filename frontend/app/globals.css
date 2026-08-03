@@ -72,3 +72,73 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #cbd5e1;
 }
+
+/* ---------------------------------------------------------------------------
+   Print
+   Anything marked data-no-print (app chrome, toolbars) drops out so a page can
+   be sent to paper as a document. Payroll uses this for the declaration sheet.
+--------------------------------------------------------------------------- */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  [data-no-print] {
+    display: none !important;
+  }
+
+  /* Keep table rules visible — browsers strip backgrounds by default. */
+  .print-sheet,
+  .print-sheet * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-sheet {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* The on-screen sheet lives in a horizontal scroller — let it spill onto paper
+     instead of being clipped at the viewport edge. */
+  .print-sheet .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  .print-sheet table {
+    width: 100%;
+    font-size: 6pt;
+    letter-spacing: 0;
+  }
+
+  .print-sheet th,
+  .print-sheet td {
+    padding: 2px 3px !important;
+    white-space: normal !important;
+    letter-spacing: 0 !important;
+  }
+
+  .print-sheet th {
+    font-size: 5.5pt;
+  }
+
+  /* Repeat the column headers on every page, but print the TOTAL line once at the end. */
+  .print-sheet thead {
+    display: table-header-group;
+  }
+
+  .print-sheet tfoot {
+    display: table-row-group;
+  }
+
+  .print-sheet tr {
+    break-inside: avoid;
+  }
+}

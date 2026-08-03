@@ -17,6 +17,7 @@ class AttendanceRecord extends Model
         'total_hours',
         'overtime_hours',
         'status',
+        'absence_reason',
         'notes'
     ];
 

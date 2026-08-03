@@ -37,7 +37,8 @@ class EmployeeFactory extends Factory
             'hire_date' => $this->faker->dateTimeBetween('-5 years', 'now')->format('Y-m-d'),
             'employment_type' => $this->faker->randomElement(['full_time', 'full_time', 'part_time', 'contract']),
             'status' => $this->faker->randomElement(['active', 'active', 'active', 'on_leave']),
-            'base_salary' => $this->faker->randomFloat(2, 10000, 150000),
+            // Monthly basic salary in Birr — see config/payroll.php ('base_salary_basis').
+            'base_salary' => $this->faker->randomFloat(2, 4500, 35000),
             'annual_leave_balance' => $this->faker->numberBetween(10, 25),
         ];
     }

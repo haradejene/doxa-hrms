@@ -14,8 +14,13 @@ return new class extends Migration
             $table->text('absence_reason')->nullable()->after('status');
         });
 
-        // Add excused_absence to the enum (PostgreSQL)
-        DB::statement("ALTER TYPE attendance_records_status_enum ADD VALUE IF NOT EXISTS 'excused_absence'");
+        // Add excused_absence to the status enum (PostgreSQL uses CHECK constraint for enums)
+        $driver = DB::connection()->getDriverName();
+        if ($driver === 'pgsql') {
+            // For PostgreSQL, we need to drop and recreate the check constraint
+            DB::statement("ALTER TABLE attendance_records DROP CONSTRAINT IF EXISTS attendance_records_status_check");
+            DB::statement("ALTER TABLE attendance_records ADD CONSTRAINT attendance_records_status_check CHECK (status IN ('present', 'absent', 'late', 'half_day', 'holiday', 'leave', 'excused_absence'))");
+        }
     }
 
     public function down(): void
@@ -24,6 +29,11 @@ return new class extends Migration
             $table->dropColumn('absence_reason');
         });
 
-        // Note: Cannot easily remove enum value in PostgreSQL, so we skip that in down()
+        // Restore original enum constraint
+        $driver = DB::connection()->getDriverName();
+        if ($driver === 'pgsql') {
+            DB::statement("ALTER TABLE attendance_records DROP CONSTRAINT IF EXISTS attendance_records_status_check");
+            DB::statement("ALTER TABLE attendance_records ADD CONSTRAINT attendance_records_status_check CHECK (status IN ('present', 'absent', 'late', 'half_day', 'holiday', 'leave'))");
+        }
     }
 };

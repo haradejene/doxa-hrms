@@ -14,7 +14,7 @@ class DashboardController extends Controller
     {
         $totalEmployees = Employee::count();
         $openPositions = JobPosting::where('status', 'published')->count();
-        $pendingApplications = Application::where('status', 'applied')->count();
+        $pendingApplications = Application::where('stage', 'applied')->count();
         $onLeaveToday = LeaveRequest::where('status', 'approved')
             ->whereDate('start_date', '<=', now())
             ->whereDate('end_date', '>=', now())
