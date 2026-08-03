@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
@@ -125,6 +126,55 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'Failed to get user info: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    public function changePassword(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'current_password' => 'required|string',
+                'password'         => ['required', 'confirmed', Password::min(8)],
+            ]);
+
+            $user = $request->user();
+
+            if (!Hash::check($validated['current_password'], $user->password)) {
+                return response()->json(['message' => 'Current password is incorrect'], 422);
+            }
+
+            $user->update(['password' => Hash::make($validated['password'])]);
+
+            // Revoke all tokens so user has to re-login
+            $user->tokens()->where('id', '!=', $request->user()->currentAccessToken()->id)->delete();
+
+            return response()->json(['message' => 'Password changed successfully']);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['message' => 'Validation failed', 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Password change failed', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Password change failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function updateProfile(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            $validated = $request->validate([
+                'name'  => 'sometimes|required|string|max:255',
+                'email' => 'sometimes|required|email|max:255|unique:users,email,' . $user->id,
+            ]);
+
+            $user->update($validated);
+
+            return response()->json(['message' => 'Profile updated successfully', 'user' => $user->fresh()]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['message' => 'Validation failed', 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Profile update failed', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Profile update failed: ' . $e->getMessage()], 500);
         }
     }
 }

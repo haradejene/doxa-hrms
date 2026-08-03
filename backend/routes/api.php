@@ -26,11 +26,14 @@ Route::post('/applications', [ApplicationController::class, 'store']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::put('/auth/password', [AuthController::class, 'changePassword']);
+    Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
 
     // Dashboard routes
     Route::get('/dashboard/metrics', [DashboardController::class, 'metrics']);
     Route::get('/dashboard/activities', [DashboardController::class, 'activities']);
     Route::get('/dashboard/recent-employees', [DashboardController::class, 'recentEmployees']);
+    Route::get('/dashboard/analytics', [DashboardController::class, 'analytics']);
 
     // Employee routes
     Route::get('/employees', [EmployeeController::class, 'index']);
@@ -48,12 +51,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/applications', [ApplicationController::class, 'index']);
     Route::get('/applications/{id}', [ApplicationController::class, 'show']);
     Route::put('/applications/{id}', [ApplicationController::class, 'update']);
-    
+
     // Interview routes
     Route::get('/interviews', [InterviewController::class, 'index']);
     Route::get('/interviews/{id}', [InterviewController::class, 'show']);
     Route::post('/interviews', [InterviewController::class, 'store']);
-    
+
     // Foundational modules
     Route::get('/attendance', [AttendanceController::class, 'index']);
     Route::post('/attendance', [AttendanceController::class, 'store']);
@@ -61,5 +64,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/payroll', [PayrollController::class, 'index']);
     Route::get('/payroll/periods', [PayrollController::class, 'periods']);
     Route::post('/payroll/process', [PayrollController::class, 'process']);
+
+    // Performance routes
     Route::get('/performance', [PerformanceController::class, 'index']);
+    Route::post('/performance', [PerformanceController::class, 'store']);
+    Route::put('/performance/{id}', [PerformanceController::class, 'update']);
+    Route::delete('/performance/{id}', [PerformanceController::class, 'destroy']);
 });
