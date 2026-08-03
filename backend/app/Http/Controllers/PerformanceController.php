@@ -37,7 +37,6 @@ class PerformanceController extends Controller
     {
         $validated = $request->validate([
             'employee_id'           => 'required|exists:employees,id',
-            'reviewer_id'           => 'required|exists:employees,id',
             'review_date'           => 'required|date',
             'period'                => 'required|in:quarterly,annual,probation,mid_year',
             'period_start_date'     => 'required|date',
@@ -53,6 +52,7 @@ class PerformanceController extends Controller
         ]);
 
         $validated['status'] = $validated['status'] ?? 'draft';
+        $validated['reviewer_id'] = auth()->id();
 
         $review = PerformanceReview::create($validated);
         $review->load(['employee', 'reviewer']);
@@ -66,7 +66,6 @@ class PerformanceController extends Controller
 
         $validated = $request->validate([
             'employee_id'           => 'sometimes|exists:employees,id',
-            'reviewer_id'           => 'sometimes|exists:employees,id',
             'review_date'           => 'sometimes|date',
             'period'                => 'sometimes|in:quarterly,annual,probation,mid_year',
             'period_start_date'     => 'sometimes|date',
@@ -105,7 +104,7 @@ class PerformanceController extends Controller
             'employee_id'           => $r->employee_id,
             'reviewer_id'           => $r->reviewer_id,
             'employee_name'         => $emp ? trim($emp->first_name . ' ' . $emp->last_name) : 'Unknown',
-            'reviewer_name'         => $rev ? trim($rev->first_name . ' ' . $rev->last_name) : 'Unknown',
+            'reviewer_name'         => $rev ? $rev->name : 'Unknown',
             'employee_department'   => $emp?->department?->name ?? 'N/A',
             'employee_position'     => $emp?->position?->title ?? 'N/A',
             'review_date'           => $r->review_date?->toDateString(),

@@ -136,7 +136,6 @@ function ReviewModal({
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     employee_id:           editing?.employee_id?.toString() ?? '',
-    reviewer_id:           editing?.reviewer_id?.toString() ?? '',
     period:                editing?.period ?? 'quarterly',
     review_date:           editing?.review_date ?? new Date().toISOString().slice(0, 10),
     period_start_date:     editing?.period_start_date ?? '',
@@ -155,14 +154,14 @@ function ReviewModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.employee_id || !form.reviewer_id || !form.period_start_date || !form.period_end_date) {
+    if (!form.employee_id || !form.period_start_date || !form.period_end_date) {
       setError('Please fill in all required fields.')
       return
     }
     setSaving(true)
     setError('')
     try {
-      const payload = { ...form, employee_id: Number(form.employee_id), reviewer_id: Number(form.reviewer_id) }
+      const payload = { ...form, employee_id: Number(form.employee_id) }
       if (isEdit) {
         await api.put(`/api/performance/${editing!.id}`, payload)
       } else {
@@ -206,20 +205,11 @@ function ReviewModal({
           )}
 
           {/* People */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1.5">Employee <span className="text-red-400">*</span></label>
               <select className="input-field" value={form.employee_id} onChange={e => set('employee_id', e.target.value)} required>
                 <option value="">Select employee…</option>
-                {employees.map(e => (
-                  <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Reviewer <span className="text-red-400">*</span></label>
-              <select className="input-field" value={form.reviewer_id} onChange={e => set('reviewer_id', e.target.value)} required>
-                <option value="">Select reviewer…</option>
                 {employees.map(e => (
                   <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>
                 ))}

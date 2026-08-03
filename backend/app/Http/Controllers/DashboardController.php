@@ -177,4 +177,21 @@ class DashboardController extends Controller
 
         return response()->json($recentHires->merge($recentJobs)->sortByDesc('id')->values());
     }
+
+    public function notifications()
+    {
+        $recentApplications = Application::with('jobPosting')
+            ->latest()
+            ->take(5)
+            ->get()
+            ->map(fn($app) => [
+                'id'      => $app->id,
+                'type'    => 'application',
+                'title'   => 'New job application',
+                'message' => "{$app->first_name} {$app->last_name} applied for " . ($app->jobPosting?->title ?? 'a job'),
+                'time'    => $app->created_at->diffForHumans(),
+            ]);
+
+        return response()->json($recentApplications);
+    }
 }

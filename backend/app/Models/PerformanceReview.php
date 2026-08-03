@@ -40,6 +40,6 @@ class PerformanceReview extends Model
 
     public function reviewer()
     {
-        return $this->belongsTo(Employee::class, 'reviewer_id');
+        return $this->belongsTo(User::class, 'reviewer_id');
     }
 }
