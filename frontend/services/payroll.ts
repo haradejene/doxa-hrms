@@ -108,3 +108,41 @@ export async function processPayroll(
   const { data } = await api.post('/api/payroll/process', { period, force })
   return data
 }
+
+export interface EditPayrollInput {
+  allowances: number
+  transport_allowance: number
+  overtime_pay: number
+  bonuses: number
+  deductions: number
+  notes: string
+}
+
+/** Update individual payroll item values. */
+export async function updatePayrollItem(
+  id: number,
+  data: EditPayrollInput
+): Promise<{ message: string; item: any; sheet: PayrollSheet }> {
+  const { data: res } = await api.put(`/api/payroll/items/${id}`, data)
+  return res
+}
+
+export interface PayrollSettings {
+  employee_rate: number
+  employer_rate: number
+  transport_ceiling: number
+}
+
+/** Fetch active payroll configuration rates. */
+export async function getPayrollSettings(): Promise<PayrollSettings> {
+  const { data } = await api.get('/api/settings/payroll')
+  return data
+}
+
+/** Persist updated payroll configuration rates. */
+export async function updatePayrollSettings(
+  settings: PayrollSettings
+): Promise<{ message: string; settings: PayrollSettings }> {
+  const { data } = await api.put('/api/settings/payroll', settings)
+  return data
+}

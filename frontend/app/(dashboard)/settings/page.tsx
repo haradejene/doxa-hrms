@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { User, Lock, Bell, Globe, Check, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { User, Lock, Bell, Globe, Check, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2, DollarSign } from 'lucide-react'
 import api from '@/services/api'
+import { getPayrollSettings, updatePayrollSettings, type PayrollSettings } from '@/services/payroll'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,7 +15,7 @@ interface UserProfile {
   created_at?: string
 }
 
-type Tab = 'profile' | 'security' | 'notifications' | 'preferences'
+type Tab = 'profile' | 'security' | 'notifications' | 'preferences' | 'payroll'
 
 // ─── Notification prefs (localStorage) ───────────────────────────────────────
 
@@ -384,6 +385,156 @@ function PreferencesSection() {
   )
 }
 
+function PayrollSection() {
+  const [settings, setSettings] = useState<PayrollSettings | null>(null)
+  const [loading, setLoading]   = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const [alert, setAlert]       = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+
+  // Local form state (percent display)
+  const [empRate, setEmpRate]   = useState('')
+  const [erRate, setErRate]     = useState('')
+  const [ceiling, setCeiling]   = useState('')
+
+  useEffect(() => {
+    getPayrollSettings()
+      .then(s => {
+        setSettings(s)
+        setEmpRate(String(Math.round(s.employee_rate * 100)))
+        setErRate(String(Math.round(s.employer_rate * 100)))
+        setCeiling(String(s.transport_ceiling))
+      })
+      .catch(() => setAlert({ type: 'error', msg: 'Failed to load payroll settings.' }))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const isDirty = settings !== null && (
+    empRate !== String(Math.round(settings.employee_rate * 100)) ||
+    erRate  !== String(Math.round(settings.employer_rate * 100)) ||
+    ceiling !== String(settings.transport_ceiling)
+  )
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    setAlert(null)
+    try {
+      const res = await updatePayrollSettings({
+        employee_rate:    parseFloat(empRate) / 100,
+        employer_rate:    parseFloat(erRate)  / 100,
+        transport_ceiling: parseFloat(ceiling),
+      })
+      setSettings(res.settings)
+      setAlert({ type: 'success', msg: 'Payroll settings saved successfully!' })
+    } catch {
+      setAlert({ type: 'error', msg: 'Failed to save payroll settings.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 text-violet-500 animate-spin" /></div>
+  }
+
+  return (
+    <form onSubmit={handleSave} className="space-y-6">
+      {alert && <Alert type={alert.type} message={alert.msg} />}
+
+      {/* Info banner */}
+      <div className="rounded-xl bg-violet-50 border border-violet-100 p-4 text-sm text-violet-700">
+        <p className="font-semibold mb-1">📋 Ethiopian Payroll Regulations</p>
+        <p className="text-xs text-violet-600 leading-relaxed">
+          These rates apply to all future payroll runs. Re-running an existing month will use the updated values.
+          Default rates: Employee pension 7%, Employer tax 11%, Transport ceiling Br 2,200.
+        </p>
+      </div>
+
+      {/* Pension */}
+      <div>
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Pension Contributions</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+              Employee Pension Rate <span className="text-gray-400 font-normal">(% of basic salary)</span>
+            </label>
+            <div className="relative">
+              <input
+                type="number" min="0" max="100" step="0.5"
+                className="input-field pr-8"
+                value={empRate}
+                onChange={e => setEmpRate(e.target.value)}
+                required
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-semibold">%</span>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">Deducted from employee net pay.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+              Employer Tax Rate <span className="text-gray-400 font-normal">(% of basic salary)</span>
+            </label>
+            <div className="relative">
+              <input
+                type="number" min="0" max="100" step="0.5"
+                className="input-field pr-8"
+                value={erRate}
+                onChange={e => setErRate(e.target.value)}
+                required
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-semibold">%</span>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">Paid by employer only. Does not affect net pay.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Transport */}
+      <div>
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Transport Allowance</p>
+        <div className="max-w-xs">
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+            Tax-Exempt Ceiling <span className="text-gray-400 font-normal">(Birr / month)</span>
+          </label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-semibold">Br</span>
+            <input
+              type="number" min="0" step="50"
+              className="input-field pl-9"
+              value={ceiling}
+              onChange={e => setCeiling(e.target.value)}
+              required
+            />
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">
+            Exempt up to the lesser of this amount or 25% of basic salary.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+        <button type="submit" disabled={!isDirty || saving} className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Save Payroll Settings
+        </button>
+        {isDirty && settings && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              setEmpRate(String(Math.round(settings.employee_rate * 100)))
+              setErRate(String(Math.round(settings.employer_rate * 100)))
+              setCeiling(String(settings.transport_ceiling))
+            }}
+          >
+            Discard
+          </button>
+        )}
+      </div>
+    </form>
+  )
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
@@ -391,6 +542,7 @@ const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'security',      label: 'Security',      icon: Lock },
   { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'preferences',   label: 'Preferences',   icon: Globe },
+  { key: 'payroll',       label: 'Payroll',        icon: DollarSign },
 ]
 
 export default function SettingsPage() {
@@ -468,6 +620,7 @@ export default function SettingsPage() {
           {tab === 'security'      && <SecuritySection />}
           {tab === 'notifications' && <NotificationsSection />}
           {tab === 'preferences'   && <PreferencesSection />}
+          {tab === 'payroll'       && <PayrollSection />}
         </div>
       </div>
     </div>

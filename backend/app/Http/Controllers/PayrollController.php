@@ -273,6 +273,7 @@ class PayrollController extends Controller
                     'pension_employee'      => (float) $item->pension_employee,
                     'pension_employer'      => (float) $item->pension_employer,
                     'other_deductions'      => (float) $item->deductions,
+                    'deduction_notes'       => $item->notes,
                     'total_deductions'      => round((float) $item->tax + (float) $item->pension_employee + (float) $item->deductions, 2),
                     'net_pay'               => (float) $item->net_pay,
                     'processed_date'        => $run->processed_at?->toDateString(),
@@ -427,7 +428,116 @@ class PayrollController extends Controller
             'total_deductions'      => $totalDeductions,
             'net_pay'               => round($gross - $totalDeductions, 2),
             'processed_date'        => null,
+            'deduction_notes'       => null,
             'components'            => $breakdown,
         ];
+    }
+
+    public function getSettings()
+    {
+        $rates = EthiopianPayrollTax::getRates();
+        return response()->json([
+            'employee_rate'    => $rates['employee_rate'],
+            'employer_rate'    => $rates['employer_rate'],
+            'transport_ceiling'=> $rates['transport_ceiling'],
+        ]);
+    }
+
+    public function updateSettings(Request $request)
+    {
+        $request->validate([
+            'employee_rate'     => ['required', 'numeric', 'min:0', 'max:1'],
+            'employer_rate'     => ['required', 'numeric', 'min:0', 'max:1'],
+            'transport_ceiling' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $settings = [
+            'employee_rate'     => (float) $request->input('employee_rate'),
+            'employer_rate'     => (float) $request->input('employer_rate'),
+            'transport_ceiling' => (float) $request->input('transport_ceiling'),
+        ];
+
+        $path = storage_path('app/payroll_settings.json');
+        if (!is_dir(dirname($path))) {
+            mkdir(dirname($path), 0755, true);
+        }
+        file_put_contents($path, json_encode($settings, JSON_PRETTY_PRINT));
+
+        return response()->json([
+            'message'  => 'Payroll settings updated successfully.',
+            'settings' => $settings,
+        ]);
+    }
+
+    public function updateItem(Request $request, $id)
+    {
+        $item = PayrollItem::findOrFail($id);
+
+        $request->validate([
+            'allowances'          => ['required', 'numeric', 'min:0'],
+            'transport_allowance' => ['required', 'numeric', 'min:0'],
+            'overtime_pay'        => ['required', 'numeric', 'min:0'],
+            'bonuses'             => ['required', 'numeric', 'min:0'],
+            'deductions'          => ['nullable', 'numeric', 'min:0'],
+            'notes'               => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $basic       = (float) $item->base_salary;
+        $allowances  = (float) $request->input('allowances');
+        $transport   = (float) $request->input('transport_allowance');
+        $overtime    = (float) $request->input('overtime_pay');
+        $bonus       = (float) $request->input('bonuses');
+        $otherDeduct = $request->has('deductions') ? (float) $request->input('deductions') : (float) $item->deductions;
+        $notes       = $request->input('notes', $item->notes);
+
+        $gross      = round($basic + $allowances + $transport + $bonus + $overtime, 2);
+        $nonTaxable = EthiopianPayrollTax::exemptTransportAllowance($transport, $basic);
+        $taxable    = round(max(0, $gross - $nonTaxable), 2);
+
+        $incomeTax = EthiopianPayrollTax::incomeTax($taxable);
+        $pensionEe = EthiopianPayrollTax::employeePension($basic);
+        $pensionEr = EthiopianPayrollTax::employerPension($basic);
+
+        $totalDeductions = round($incomeTax + $pensionEe + $otherDeduct, 2);
+        $netPay = round($gross - $totalDeductions, 2);
+
+        $item->update([
+            'allowances'            => $allowances,
+            'transport_allowance'   => $transport,
+            'overtime_pay'          => $overtime,
+            'bonuses'               => $bonus,
+            'deductions'            => $otherDeduct,
+            'notes'                 => $notes,
+            'gross_pay'             => $gross,
+            'non_taxable_allowance' => $nonTaxable,
+            'taxable_income'        => $taxable,
+            'tax'                   => $incomeTax,
+            'pension_employee'      => $pensionEe,
+            'pension_employer'      => $pensionEr,
+            'net_pay'               => $netPay,
+        ]);
+
+        // Recalculate totals for the run
+        $run = $item->run;
+        $allItems = PayrollItem::where('payroll_run_id', $run->id)->get();
+
+        $run->update([
+            'total_gross_pay'        => $allItems->sum('gross_pay'),
+            'total_deductions'       => $allItems->sum(function($i) {
+                return (float) $i->tax + (float) $i->pension_employee + (float) $i->deductions;
+            }),
+            'total_income_tax'       => $allItems->sum('tax'),
+            'total_pension_employee' => $allItems->sum('pension_employee'),
+            'total_pension_employer' => $allItems->sum('pension_employer'),
+            'total_net_pay'          => $allItems->sum('net_pay'),
+        ]);
+
+        // Return the updated sheet
+        $period = Carbon::createFromFormat('Y-m-d', $run->period_key . '-01')->startOfDay();
+        return response()->json([
+            'message' => 'Payroll item updated successfully.',
+            'item'    => $item,
+            'sheet'   => $this->sheet($period, $this->recordsFromRun($run), $run),
+        ]);
     }
 }

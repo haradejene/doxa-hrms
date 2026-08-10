@@ -46,16 +46,34 @@ class EthiopianPayrollTax
         return 0.0;
     }
 
+    public static function getRates(): array
+    {
+        $path = storage_path('app/payroll_settings.json');
+        if (file_exists($path)) {
+            $settings = json_decode(file_get_contents($path), true);
+            return [
+                'employee_rate' => (float) ($settings['employee_rate'] ?? config('payroll.pension.employee_rate')),
+                'employer_rate' => (float) ($settings['employer_rate'] ?? config('payroll.pension.employer_rate')),
+                'transport_ceiling' => (float) ($settings['transport_ceiling'] ?? config('payroll.transport_allowance.ceiling')),
+            ];
+        }
+        return [
+            'employee_rate' => (float) config('payroll.pension.employee_rate'),
+            'employer_rate' => (float) config('payroll.pension.employer_rate'),
+            'transport_ceiling' => (float) config('payroll.transport_allowance.ceiling'),
+        ];
+    }
+
     /** Employee pension contribution (7% of basic salary). */
     public static function employeePension(float $basicSalary): float
     {
-        return round(max(0, $basicSalary) * config('payroll.pension.employee_rate'), 2);
+        return round(max(0, $basicSalary) * self::getRates()['employee_rate'], 2);
     }
 
     /** Employer pension contribution (11% of basic salary). */
     public static function employerPension(float $basicSalary): float
     {
-        return round(max(0, $basicSalary) * config('payroll.pension.employer_rate'), 2);
+        return round(max(0, $basicSalary) * self::getRates()['employer_rate'], 2);
     }
 
     /**
@@ -68,9 +86,10 @@ class EthiopianPayrollTax
             return 0.0;
         }
 
+        $rates = self::getRates();
         $limit = min(
             $basicSalary * config('payroll.transport_allowance.basic_salary_share'),
-            config('payroll.transport_allowance.ceiling')
+            $rates['transport_ceiling']
         );
 
         return round(min($transportAllowance, max(0, $limit)), 2);
