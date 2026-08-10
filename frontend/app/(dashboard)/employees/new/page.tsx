@@ -64,6 +64,7 @@ export default function NewEmployeePage() {
                 value={formData.first_name}
                 onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                placeholder="e.g., Abebe"
               />
             </div>
             <div>
@@ -76,6 +77,7 @@ export default function NewEmployeePage() {
                 value={formData.last_name}
                 onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                placeholder="e.g., Tadesse"
               />
             </div>
             <div>
@@ -88,6 +90,7 @@ export default function NewEmployeePage() {
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                placeholder="e.g., abebe.tadesse@doxa.com"
               />
             </div>
             <div>
@@ -99,6 +102,7 @@ export default function NewEmployeePage() {
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                placeholder="e.g., +251 911 234 567"
               />
             </div>
             <div>
@@ -165,7 +169,7 @@ export default function NewEmployeePage() {
                 value={formData.base_salary}
                 onChange={(e) => setFormData({ ...formData, base_salary: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                placeholder="e.g., 75000"
+                placeholder="e.g., 18000"
               />
             </div>
           </div>

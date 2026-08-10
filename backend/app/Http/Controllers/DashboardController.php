@@ -65,7 +65,7 @@ class DashboardController extends Controller
         // Total payroll from latest payroll run
         $latestRun     = PayrollRun::latest()->first();
         $totalPayroll  = $latestRun
-            ? PayrollItem::where('payroll_run_id', $latestRun->id)->sum('gross_salary')
+            ? PayrollItem::where('payroll_run_id', $latestRun->id)->sum('gross_pay')
             : Employee::whereNotNull('base_salary')->sum('base_salary');
 
         // --- Status breakdown (for donut chart) ---

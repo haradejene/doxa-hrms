@@ -150,7 +150,7 @@ function ProfileSection({ user, onUpdate }: { user: UserProfile; onUpdate: (u: U
             className="input-field"
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="Your full name"
+            placeholder="e.g., Abebe Tadesse"
             required
           />
         </div>
@@ -161,7 +161,7 @@ function ProfileSection({ user, onUpdate }: { user: UserProfile; onUpdate: (u: U
             className="input-field"
             value={email}
             onChange={e => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            placeholder="abebe.tadesse@doxa.com"
             required
           />
         </div>

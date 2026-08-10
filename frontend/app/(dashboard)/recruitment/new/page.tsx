@@ -125,7 +125,7 @@ export default function NewJobPostingPage() {
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                placeholder="e.g., Remote, New York, London"
+                placeholder="e.g., Addis Ababa, Bahir Dar, Remote"
               />
             </div>
             <div>
@@ -151,26 +151,26 @@ export default function NewJobPostingPage() {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Minimum Salary
+                Minimum Salary (Birr / month)
               </label>
               <input
                 type="number"
                 value={formData.salary_min}
                 onChange={(e) => setFormData({ ...formData, salary_min: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                placeholder="e.g., 60000"
+                placeholder="e.g., 180000"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Maximum Salary
+                Maximum Salary (Birr / month)
               </label>
               <input
                 type="number"
                 value={formData.salary_max}
                 onChange={(e) => setFormData({ ...formData, salary_max: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                placeholder="e.g., 90000"
+                placeholder="e.g., 420000"
               />
             </div>
           </div>

@@ -59,13 +59,12 @@ return [
     */
 
     'tax_brackets' => [
-        ['from' => 0.00,     'to' => 600.00,   'rate' => 0.00, 'deduction' => 0.00],
-        ['from' => 600.01,   'to' => 1650.00,  'rate' => 0.10, 'deduction' => 60.00],
-        ['from' => 1650.01,  'to' => 3200.00,  'rate' => 0.15, 'deduction' => 142.50],
-        ['from' => 3200.01,  'to' => 5250.00,  'rate' => 0.20, 'deduction' => 302.50],
-        ['from' => 5250.01,  'to' => 7800.00,  'rate' => 0.25, 'deduction' => 565.00],
-        ['from' => 7800.01,  'to' => 10900.00, 'rate' => 0.30, 'deduction' => 955.00],
-        ['from' => 10900.01, 'to' => null,     'rate' => 0.35, 'deduction' => 1500.00],
+        ['from' => 0.00,     'to' => 2000.00,  'rate' => 0.00, 'deduction' => 0.00],
+        ['from' => 2000.01,  'to' => 4000.00,  'rate' => 0.15, 'deduction' => 300.00],
+        ['from' => 4000.01,  'to' => 7000.00,  'rate' => 0.20, 'deduction' => 500.00],
+        ['from' => 7000.01,  'to' => 10000.00, 'rate' => 0.25, 'deduction' => 850.00],
+        ['from' => 10000.01, 'to' => 14000.00, 'rate' => 0.30, 'deduction' => 1350.00],
+        ['from' => 14000.01, 'to' => null,     'rate' => 0.35, 'deduction' => 2050.00],
     ],
 
     /*

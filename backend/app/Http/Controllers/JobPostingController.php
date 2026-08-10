@@ -12,13 +12,17 @@ class JobPostingController extends Controller
         $jobPostings = JobPosting::with(['department', 'position'])
             ->withCount('applications')
             ->where('status', 'published')
+            ->newestFirst()
             ->get();
         return response()->json($jobPostings);
     }
 
     public function indexAll()
     {
-        $jobPostings = JobPosting::with(['department', 'position'])->withCount('applications')->get();
+        $jobPostings = JobPosting::with(['department', 'position'])
+            ->withCount('applications')
+            ->newestFirst()
+            ->get();
         return response()->json($jobPostings);
     }
 

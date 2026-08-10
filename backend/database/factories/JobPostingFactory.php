@@ -44,9 +44,10 @@ class JobPostingFactory extends Factory
             'benefits' => $this->faker->paragraphs(1, true),
             'type' => $this->faker->randomElement(['full_time', 'part_time', 'contract', 'remote', 'hybrid']),
             'experience_level' => $this->faker->randomElement(['entry', 'junior', 'mid', 'senior', 'lead']),
-            'salary_min' => $this->faker->randomElement([20000, 30000, 40000, 50000]),
-            'salary_max' => $this->faker->randomElement([60000, 80000, 100000, 120000]),
-            'location' => $this->faker->randomElement(['Remote', 'Addis Ababa', 'Hawassa', 'Dire Dawa']),
+            // Annual gross in Birr — the careers pages render this range as "/ yr".
+            'salary_min' => $this->faker->randomElement([120000, 180000, 240000, 300000]),
+            'salary_max' => $this->faker->randomElement([360000, 480000, 600000, 720000]),
+            'location' => $this->faker->randomElement(['Remote', 'Addis Ababa', 'Hawassa', 'Dire Dawa', 'Bahir Dar', 'Adama', 'Mekelle', 'Bishoftu', 'Jimma']),
             'posted_date' => $this->faker->dateTimeBetween('-1 month', 'now')->format('Y-m-d'),
             'status' => $this->faker->randomElement(['published', 'published', 'draft', 'closed']),
         ];

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Clock, DollarSign, CheckCircle, Bookmark, Share2, ChevronRight } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, Wallet, CheckCircle, Bookmark, Share2, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 interface Job {
@@ -111,8 +111,8 @@ export default function JobDetailPage() {
             </span>
             {job.salary_min && job.salary_max && (
               <span className="flex items-center gap-1.5 font-bold text-gray-700">
-                <DollarSign className="h-4 w-4 text-emerald-500" />
-                ${job.salary_min.toLocaleString()} – ${job.salary_max.toLocaleString()} / yr
+                <Wallet className="h-4 w-4 text-emerald-500" />
+                Br {job.salary_min.toLocaleString()} – Br {job.salary_max.toLocaleString()} / yr
               </span>
             )}
           </div>

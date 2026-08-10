@@ -90,8 +90,6 @@ const COLUMNS: {
 }[] = [
   { key: 'no', label: 'No.', align: 'center', value: r => String(r.no), width: 'w-10' },
   { key: 'employee_name', label: 'Employee Name', align: 'left', value: r => r.employee_name },
-  { key: 'employee_number', label: 'ID No.', align: 'left', value: r => r.employee_number ?? '' },
-  { key: 'position', label: 'Position', align: 'left', value: r => r.position ?? '' },
   { key: 'pay_period', label: 'Pay Period', align: 'center', value: r => payPeriod(r.period_start, r.period_end) },
   { key: 'payment_date', label: 'Payment Date', align: 'center', value: r => shortDate(r.payment_date) },
   { key: 'basic_salary', label: 'Basic Salary', align: 'right', value: r => num(r.basic_salary, false), total: t => num(t.basic_salary, false) },

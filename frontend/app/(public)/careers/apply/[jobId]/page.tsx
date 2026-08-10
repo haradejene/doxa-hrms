@@ -98,7 +98,7 @@ export default function ApplyPage() {
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">First name *</label>
                 <input
-                  required type="text" placeholder="John"
+                  required type="text" placeholder="Abebe"
                   className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:bg-white focus:border-violet-400 focus:ring-4 focus:ring-violet-100 outline-none transition-all"
                   value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })}
                 />
@@ -106,7 +106,7 @@ export default function ApplyPage() {
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Last name *</label>
                 <input
-                  required type="text" placeholder="Doe"
+                  required type="text" placeholder="Tadesse"
                   className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:bg-white focus:border-violet-400 focus:ring-4 focus:ring-violet-100 outline-none transition-all"
                   value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })}
                 />
@@ -116,7 +116,7 @@ export default function ApplyPage() {
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Email *</label>
               <input
-                required type="email" placeholder="john@example.com"
+                required type="email" placeholder="abebe.tadesse@gmail.com"
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:bg-white focus:border-violet-400 focus:ring-4 focus:ring-violet-100 outline-none transition-all"
                 value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
               />
@@ -125,7 +125,7 @@ export default function ApplyPage() {
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Phone</label>
               <input
-                type="tel" placeholder="+1 (555) 000-0000"
+                type="tel" placeholder="+251 911 234 567"
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:bg-white focus:border-violet-400 focus:ring-4 focus:ring-violet-100 outline-none transition-all"
                 value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
               />

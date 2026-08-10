@@ -23,9 +23,15 @@ class UserFactory extends Factory
      */
     public function definition(): array
     {
+        $firstNames = ['Abebe', 'Almaz', 'Bekele', 'Betelhem', 'Dawit', 'Eden', 'Fikre', 'Genet', 'Hailu', 'Hanna', 'Kaleb', 'Kalkidan', 'Mulugeta', 'Nardos', 'Samrawit', 'Sisay', 'Tewodros', 'Tigist', 'Yared', 'Yordanos'];
+        $lastNames = ['Tadesse', 'Alemu', 'Haile', 'Tesfaye', 'Assefa', 'Worku', 'Tilahun', 'Girma', 'Bekele', 'Mekonnen', 'Getachew', 'Ayele', 'Desta'];
+
+        $firstName = fake()->randomElement($firstNames);
+        $lastName = fake()->randomElement($lastNames);
+
         return [
-            'name' => fake()->name(),
-            'email' => fake()->unique()->safeEmail(),
+            'name' => $firstName . ' ' . $lastName,
+            'email' => strtolower($firstName . '.' . $lastName . fake()->unique()->numberBetween(1, 9999) . '@doxa.com'),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),

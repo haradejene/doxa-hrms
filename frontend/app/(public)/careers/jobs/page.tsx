@@ -189,7 +189,7 @@ export default function JobsPage() {
                         </span>
                         {job.salary_min && job.salary_max && (
                           <span className="text-gray-600 font-semibold">
-                            ${job.salary_min.toLocaleString()} – ${job.salary_max.toLocaleString()}
+                            Br {job.salary_min.toLocaleString()} – Br {job.salary_max.toLocaleString()}
                           </span>
                         )}
                       </div>
