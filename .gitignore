@@ -1,6 +1,7 @@
 /*
 !/frontend
 !/backend
+!/README.md
 # Laravel specific
 /backend/.env
 /backend/.env.*
