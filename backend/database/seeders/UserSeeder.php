@@ -18,20 +18,6 @@ class UserSeeder extends Seeder
                 'role' => 'hr_admin',
                 'is_active' => true,
             ],
-            [
-                'name' => 'Manager User',
-                'email' => 'manager@doxa.com',
-                'password' => Hash::make('SecurePass123'),
-                'role' => 'management',
-                'is_active' => true,
-            ],
-            [
-                'name' => 'Applicant User',
-                'email' => 'applicant@doxa.com',
-                'password' => Hash::make('SecurePass123'),
-                'role' => 'applicant',
-                'is_active' => true,
-            ],
         ];
 
         foreach ($users as $user) {

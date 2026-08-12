@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import {
-  ArrowLeft, Download, Printer, Play, RotateCcw,
-  CheckCircle2, Search, X, AlertCircle, Loader2, Users, Wallet, Receipt, Edit2, Check
+  ArrowLeft, Download, Printer, Play, RotateCcw, Save,
+  CheckCircle2, Search, X, AlertCircle, Loader2, Users, Wallet, Receipt, Edit2, Check, Info
 } from 'lucide-react'
 import {
-  getPayrollSheet, processPayroll, updatePayrollItem,
+  getPayrollSheet, processPayroll, updatePayrollItem, saveDraftPeriod,
   type PayrollSheet, type PayrollRecord, type PayrollTotals
 } from '@/services/payroll'
 
@@ -123,6 +123,12 @@ export default function PayrollDetailPage({ params }: { params: { id: string } }
   const [savingItem, setSavingItem] = useState(false)
   const [editError, setEditError] = useState('')
 
+  // Deduction notes popover
+  const [deductionPopover, setDeductionPopover] = useState<{ name: string; notes: string } | null>(null)
+
+  // Save draft
+  const [savingDraft, setSavingDraft] = useState(false)
+
   const loadSheet = useCallback(async (key: string) => {
     setLoading(true)
     try {
@@ -157,6 +163,21 @@ export default function PayrollDetailPage({ params }: { params: { id: string } }
       setBanner({ kind: 'error', text: e?.response?.data?.message ?? 'Failed to process payroll.' })
     } finally {
       setProcessing(false)
+    }
+  }
+
+  const handleSaveDraft = async () => {
+    if (!sheet) return
+    setSavingDraft(true)
+    setBanner(null)
+    try {
+      const res = await saveDraftPeriod(period)
+      setSheet(res.sheet)
+      setBanner({ kind: 'ok', text: `Draft saved — ${sheet.period_label} now appears in the payroll list.` })
+    } catch (e: any) {
+      setBanner({ kind: 'error', text: e?.response?.data?.message ?? 'Failed to save draft.' })
+    } finally {
+      setSavingDraft(false)
     }
   }
 
@@ -320,6 +341,16 @@ export default function PayrollDetailPage({ params }: { params: { id: string } }
             >
               <Printer className="h-4 w-4 text-gray-500" /> Print
             </button>
+            {sheet?.status === 'draft' && (
+              <button
+                onClick={handleSaveDraft}
+                disabled={savingDraft || !sheet || sheet.totals.employees === 0}
+                className="inline-flex items-center gap-2 h-10 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {savingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Draft
+              </button>
+            )}
             <button
               onClick={handleRun}
               disabled={processing || !sheet || sheet.totals.employees === 0}
@@ -500,11 +531,16 @@ export default function PayrollDetailPage({ params }: { params: { id: string } }
                               ${c.key === 'signature' ? 'min-w-[5.5rem]' : ''}`}
                           >
                             {c.key === 'other_deductions' && (r as any).deduction_notes ? (
-                              <div>
+                              <div className="flex items-center justify-end gap-1">
                                 <span>{c.value(r)}</span>
-                                <span className="block text-[10px] text-orange-500 font-normal truncate max-w-[7rem]" title={(r as any).deduction_notes}>
-                                  {(r as any).deduction_notes}
-                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeductionPopover({ name: r.employee_name, notes: (r as any).deduction_notes })}
+                                  className="p-0.5 rounded text-orange-400 hover:text-orange-600 hover:bg-orange-50 transition-colors flex-shrink-0 print:hidden"
+                                  title="View deduction reason"
+                                >
+                                  <Info className="h-3 w-3" />
+                                </button>
                               </div>
                             ) : c.value(r)}
                           </td>
@@ -693,6 +729,43 @@ export default function PayrollDetailPage({ params }: { params: { id: string } }
                 Save Changes
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Deduction Notes Popover */}
+      {deductionPopover && (
+        <div
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+          onClick={() => setDeductionPopover(null)}
+        >
+          <div
+            className="bg-white rounded-2xl border border-gray-100 shadow-2xl max-w-sm w-full p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-orange-50 flex items-center justify-center flex-shrink-0">
+                <Info className="h-4 w-4 text-orange-500" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">Deduction Reason</p>
+                <p className="text-xs text-gray-400 mt-0.5">{deductionPopover.name}</p>
+              </div>
+              <button
+                onClick={() => setDeductionPopover(null)}
+                className="ml-auto p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-700 bg-gray-50 rounded-xl px-4 py-3 leading-relaxed">
+              {deductionPopover.notes}
+            </p>
+            <button
+              onClick={() => setDeductionPopover(null)}
+              className="mt-4 w-full h-10 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

@@ -12,8 +12,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
-    email: 'admin@doxa.com',
-    password: 'SecurePass123',
+    email: '',
+    password: '',
   })
   const [error, setError] = useState('')
 
@@ -105,7 +105,7 @@ export default function LoginPage() {
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 px-4 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                placeholder="admin@doxa.com"
+                placeholder="Email address"
               />
             </div>
 
@@ -148,14 +148,6 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          <div className="mt-4 text-center text-xs text-gray-400 border-t border-gray-100 pt-4">
-            <p className="font-medium text-gray-500">Demo Credentials:</p>
-            <div className="mt-2 space-y-1 text-left max-w-xs mx-auto">
-              <p><strong>HR Admin:</strong> admin@doxa.com / SecurePass123</p>
-              <p><strong>Management:</strong> manager@doxa.com / SecurePass123</p>
-              <p><strong>Applicant:</strong> applicant@doxa.com / SecurePass123</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>

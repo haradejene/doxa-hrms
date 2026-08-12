@@ -19,7 +19,7 @@ class EthiopianPayrollTax
             return 0.0;
         }
 
-        foreach (config('payroll.tax_brackets') as $bracket) {
+        foreach (self::getRates()['tax_brackets'] as $bracket) {
             $upper = $bracket['to'];
 
             if ($upper === null || $taxableIncome <= $upper) {
@@ -35,7 +35,7 @@ class EthiopianPayrollTax
      */
     public static function marginalRate(float $taxableIncome): float
     {
-        foreach (config('payroll.tax_brackets') as $bracket) {
+        foreach (self::getRates()['tax_brackets'] as $bracket) {
             $upper = $bracket['to'];
 
             if ($upper === null || $taxableIncome <= $upper) {
@@ -49,18 +49,16 @@ class EthiopianPayrollTax
     public static function getRates(): array
     {
         $path = storage_path('app/payroll_settings.json');
+        $saved = [];
         if (file_exists($path)) {
-            $settings = json_decode(file_get_contents($path), true);
-            return [
-                'employee_rate' => (float) ($settings['employee_rate'] ?? config('payroll.pension.employee_rate')),
-                'employer_rate' => (float) ($settings['employer_rate'] ?? config('payroll.pension.employer_rate')),
-                'transport_ceiling' => (float) ($settings['transport_ceiling'] ?? config('payroll.transport_allowance.ceiling')),
-            ];
+            $saved = json_decode(file_get_contents($path), true) ?? [];
         }
+
         return [
-            'employee_rate' => (float) config('payroll.pension.employee_rate'),
-            'employer_rate' => (float) config('payroll.pension.employer_rate'),
-            'transport_ceiling' => (float) config('payroll.transport_allowance.ceiling'),
+            'employee_rate'    => (float) ($saved['employee_rate'] ?? config('payroll.pension.employee_rate')),
+            'employer_rate'    => (float) ($saved['employer_rate'] ?? config('payroll.pension.employer_rate')),
+            'transport_ceiling'=> (float) ($saved['transport_ceiling'] ?? config('payroll.transport_allowance.ceiling')),
+            'tax_brackets'     => $saved['tax_brackets'] ?? config('payroll.tax_brackets'),
         ];
     }
 

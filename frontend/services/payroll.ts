@@ -46,6 +46,7 @@ export interface PayrollRecord {
   total_deductions: number
   net_pay: number
   processed_date: string | null
+  deduction_notes?: string | null
 }
 
 export interface PayrollTotals {
@@ -109,6 +110,14 @@ export async function processPayroll(
   return data
 }
 
+/** Save a period as a draft PayrollRun so it appears permanently in the payroll list. */
+export async function saveDraftPeriod(
+  period: string
+): Promise<{ message: string; sheet: PayrollSheet }> {
+  const { data } = await api.post('/api/payroll/draft', { period })
+  return data
+}
+
 export interface EditPayrollInput {
   allowances: number
   transport_allowance: number
@@ -131,6 +140,12 @@ export interface PayrollSettings {
   employee_rate: number
   employer_rate: number
   transport_ceiling: number
+  tax_brackets: {
+    from: number
+    to: number | null
+    rate: number
+    deduction: number
+  }[]
 }
 
 /** Fetch active payroll configuration rates. */

@@ -104,11 +104,14 @@ export function Header({ onMenuClick }: HeaderProps) {
           {/* Search */}
           <button 
             onClick={() => setShowSearch(true)}
-            className="hidden md:flex items-center gap-2 text-sm text-gray-400 border border-gray-200 bg-gray-50 rounded-xl px-3 py-2 hover:border-violet-300 hover:text-gray-600 transition-all min-w-[160px]"
+            className="hidden md:flex items-center gap-2 text-sm text-gray-500 border border-gray-200/80 bg-gray-50/50 rounded-xl px-3 h-10 hover:bg-gray-100 hover:border-gray-300 transition-all w-56 lg:w-64"
           >
-            <Search className="h-4 w-4" />
-            <span>Quick search...</span>
-            <span className="ml-auto text-[10px] text-gray-300 font-medium border border-gray-200 rounded px-1">⌘K</span>
+            <Search className="h-4 w-4 text-gray-400 flex-shrink-0" />
+            <span className="truncate">Quick search...</span>
+            <div className="ml-auto flex items-center gap-0.5 flex-shrink-0">
+              <span className="flex items-center justify-center h-5 min-w-[20px] px-1 text-[10px] text-gray-500 font-medium bg-white border border-gray-200 rounded shadow-sm">⌘</span>
+              <span className="flex items-center justify-center h-5 min-w-[20px] px-1 text-[10px] text-gray-500 font-medium bg-white border border-gray-200 rounded shadow-sm">K</span>
+            </div>
           </button>
 
           {/* Notifications */}
@@ -186,13 +189,13 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Search Modal */}
       {showSearch && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden border border-gray-100">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-transparent">
+          <div className="bg-white rounded-2xl shadow-xl shadow-gray-900/10 w-full max-w-xl overflow-hidden border border-gray-100">
             <form onSubmit={handleSearchSubmit} className="flex items-center px-4 py-3 border-b border-gray-100">
               <Search className="h-5 w-5 text-gray-400" />
               <input
                 ref={searchInputRef}
-                className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 px-4 text-base text-gray-900 placeholder-gray-400"
+                className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none shadow-none focus:shadow-none px-4 text-base text-gray-900 placeholder-gray-400"
                 placeholder="Search employees by name..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { User, Lock, Bell, Globe, Check, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2, DollarSign } from 'lucide-react'
+import { User, Lock, Bell, Globe, Check, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2, DollarSign, Plus, Trash2 } from 'lucide-react'
 import api from '@/services/api'
 import { getPayrollSettings, updatePayrollSettings, type PayrollSettings } from '@/services/payroll'
 
@@ -21,18 +21,18 @@ type Tab = 'profile' | 'security' | 'notifications' | 'preferences' | 'payroll'
 
 interface NotifPrefs {
   payrollProcessed: boolean
-  leaveRequests:    boolean
-  newApplications:  boolean
+  leaveRequests: boolean
+  newApplications: boolean
   performanceReviews: boolean
-  systemAlerts:     boolean
+  systemAlerts: boolean
 }
 
 const DEFAULT_NOTIF: NotifPrefs = {
-  payrollProcessed:   true,
-  leaveRequests:      true,
-  newApplications:    true,
+  payrollProcessed: true,
+  leaveRequests: true,
+  newApplications: true,
   performanceReviews: true,
-  systemAlerts:       false,
+  systemAlerts: false,
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -42,14 +42,12 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none ${
-        checked ? 'bg-violet-600' : 'bg-gray-200'
-      }`}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none ${checked ? 'bg-violet-600' : 'bg-gray-200'
+        }`}
     >
       <span
-        className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${
-          checked ? 'translate-x-6' : 'translate-x-1'
-        }`}
+        className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${checked ? 'translate-x-6' : 'translate-x-1'
+          }`}
       />
     </button>
   )
@@ -58,11 +56,10 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
 function Alert({ type, message }: { type: 'success' | 'error'; message: string }) {
   const isSuccess = type === 'success'
   return (
-    <div className={`flex items-center gap-2 p-3 rounded-xl border text-sm ${
-      isSuccess
+    <div className={`flex items-center gap-2 p-3 rounded-xl border text-sm ${isSuccess
         ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
         : 'bg-red-50 border-red-100 text-red-700'
-    }`}>
+      }`}>
       {isSuccess
         ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
         : <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -100,13 +97,13 @@ function PasswordInput({ id, placeholder, value, onChange }: {
 // ─── Sections ─────────────────────────────────────────────────────────────────
 
 function ProfileSection({ user, onUpdate }: { user: UserProfile; onUpdate: (u: UserProfile) => void }) {
-  const [name, setName]       = useState(user.name)
-  const [email, setEmail]     = useState(user.email)
-  const [saving, setSaving]   = useState(false)
-  const [alert, setAlert]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [name, setName] = useState(user.name)
+  const [email, setEmail] = useState(user.email)
+  const [saving, setSaving] = useState(false)
+  const [alert, setAlert] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
   const initials = name.trim().split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-  const isDirty  = name !== user.name || email !== user.email
+  const isDirty = name !== user.name || email !== user.email
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -190,11 +187,11 @@ function ProfileSection({ user, onUpdate }: { user: UserProfile; onUpdate: (u: U
 }
 
 function SecuritySection() {
-  const [current, setCurrent]   = useState('')
-  const [newPwd, setNewPwd]     = useState('')
-  const [confirm, setConfirm]   = useState('')
-  const [saving, setSaving]     = useState(false)
-  const [alert, setAlert]       = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [current, setCurrent] = useState('')
+  const [newPwd, setNewPwd] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [alert, setAlert] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -293,11 +290,11 @@ function NotificationsSection() {
   }
 
   const notifItems: { key: keyof NotifPrefs; label: string; desc: string }[] = [
-    { key: 'payrollProcessed',   label: 'Payroll Processed',     desc: 'Get notified when monthly payroll runs are completed.' },
-    { key: 'leaveRequests',      label: 'Leave Requests',        desc: 'Alerts for new and updated leave requests.' },
-    { key: 'newApplications',    label: 'New Applications',      desc: 'Notify when candidates apply to open positions.' },
-    { key: 'performanceReviews', label: 'Performance Reviews',   desc: 'Reminders for pending and completed reviews.' },
-    { key: 'systemAlerts',       label: 'System Alerts',         desc: 'Critical system events and error notifications.' },
+    { key: 'payrollProcessed', label: 'Payroll Processed', desc: 'Get notified when monthly payroll runs are completed.' },
+    { key: 'leaveRequests', label: 'Leave Requests', desc: 'Alerts for new and updated leave requests.' },
+    { key: 'newApplications', label: 'New Applications', desc: 'Notify when candidates apply to open positions.' },
+    { key: 'performanceReviews', label: 'Performance Reviews', desc: 'Reminders for pending and completed reviews.' },
+    { key: 'systemAlerts', label: 'System Alerts', desc: 'Critical system events and error notifications.' },
   ]
 
   return (
@@ -327,8 +324,8 @@ function NotificationsSection() {
 }
 
 function PreferencesSection() {
-  const [timezone, setTimezone]   = useState(() => typeof window !== 'undefined' ? localStorage.getItem('pref_tz') ?? 'Africa/Addis_Ababa' : 'Africa/Addis_Ababa')
-  const [language, setLanguage]   = useState(() => typeof window !== 'undefined' ? localStorage.getItem('pref_lang') ?? 'en' : 'en')
+  const [timezone, setTimezone] = useState(() => typeof window !== 'undefined' ? localStorage.getItem('pref_tz') ?? 'Africa/Addis_Ababa' : 'Africa/Addis_Ababa')
+  const [language, setLanguage] = useState(() => typeof window !== 'undefined' ? localStorage.getItem('pref_lang') ?? 'en' : 'en')
   const [dateFormat, setDateFormat] = useState(() => typeof window !== 'undefined' ? localStorage.getItem('pref_date') ?? 'YYYY-MM-DD' : 'YYYY-MM-DD')
   const [saved, setSaved] = useState(false)
 
@@ -385,16 +382,25 @@ function PreferencesSection() {
   )
 }
 
+type TaxBracket = {
+  from: number
+  to: number | null
+  rate: number
+  deduction: number
+}
+
 function PayrollSection() {
   const [settings, setSettings] = useState<PayrollSettings | null>(null)
-  const [loading, setLoading]   = useState(true)
-  const [saving, setSaving]     = useState(false)
-  const [alert, setAlert]       = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [alert, setAlert] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
-  // Local form state (percent display)
-  const [empRate, setEmpRate]   = useState('')
-  const [erRate, setErRate]     = useState('')
-  const [ceiling, setCeiling]   = useState('')
+  // Pension rates
+  const [empRate, setEmpRate] = useState('')
+  const [erRate, setErRate] = useState('')
+
+  // Tax brackets — editable rows
+  const [brackets, setBrackets] = useState<TaxBracket[]>([])
 
   useEffect(() => {
     getPayrollSettings()
@@ -402,7 +408,7 @@ function PayrollSection() {
         setSettings(s)
         setEmpRate(String(Math.round(s.employee_rate * 100)))
         setErRate(String(Math.round(s.employer_rate * 100)))
-        setCeiling(String(s.transport_ceiling))
+        setBrackets(s.tax_brackets ?? [])
       })
       .catch(() => setAlert({ type: 'error', msg: 'Failed to load payroll settings.' }))
       .finally(() => setLoading(false))
@@ -410,9 +416,27 @@ function PayrollSection() {
 
   const isDirty = settings !== null && (
     empRate !== String(Math.round(settings.employee_rate * 100)) ||
-    erRate  !== String(Math.round(settings.employer_rate * 100)) ||
-    ceiling !== String(settings.transport_ceiling)
+    erRate !== String(Math.round(settings.employer_rate * 100)) ||
+    JSON.stringify(brackets) !== JSON.stringify(settings.tax_brackets ?? [])
   )
+
+  const updateBracket = (i: number, field: keyof TaxBracket, value: string) => {
+    setBrackets(prev => prev.map((b, idx) =>
+      idx === i
+        ? { ...b, [field]: field === 'to' ? (value === '' ? null : parseFloat(value)) : parseFloat(value) || 0 }
+        : b
+    ))
+  }
+
+  const addBracket = () => {
+    const last = brackets[brackets.length - 1]
+    const from = last ? (last.to ?? 0) + 0.01 : 0
+    setBrackets(prev => [...prev, { from, to: null, rate: 0, deduction: 0 }])
+  }
+
+  const removeBracket = (i: number) => {
+    setBrackets(prev => prev.filter((_, idx) => idx !== i))
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -420,11 +444,13 @@ function PayrollSection() {
     setAlert(null)
     try {
       const res = await updatePayrollSettings({
-        employee_rate:    parseFloat(empRate) / 100,
-        employer_rate:    parseFloat(erRate)  / 100,
-        transport_ceiling: parseFloat(ceiling),
+        employee_rate: parseFloat(empRate) / 100,
+        employer_rate: parseFloat(erRate) / 100,
+        transport_ceiling: settings?.transport_ceiling ?? 2200,
+        tax_brackets: brackets,
       })
       setSettings(res.settings)
+      setBrackets(res.settings.tax_brackets ?? brackets)
       setAlert({ type: 'success', msg: 'Payroll settings saved successfully!' })
     } catch {
       setAlert({ type: 'error', msg: 'Failed to save payroll settings.' })
@@ -443,10 +469,10 @@ function PayrollSection() {
 
       {/* Info banner */}
       <div className="rounded-xl bg-violet-50 border border-violet-100 p-4 text-sm text-violet-700">
-        <p className="font-semibold mb-1">📋 Ethiopian Payroll Regulations</p>
+        <p className="font-semibold mb-1">Ethiopian Payroll Regulations</p>
         <p className="text-xs text-violet-600 leading-relaxed">
           These rates apply to all future payroll runs. Re-running an existing month will use the updated values.
-          Default rates: Employee pension 7%, Employer tax 11%, Transport ceiling Br 2,200.
+          Default pension: Employee 7%, Employer 11%.
         </p>
       </div>
 
@@ -489,26 +515,104 @@ function PayrollSection() {
         </div>
       </div>
 
-      {/* Transport */}
+      {/* Income Tax Brackets */}
       <div>
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Transport Allowance</p>
-        <div className="max-w-xs">
-          <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-            Tax-Exempt Ceiling <span className="text-gray-400 font-normal">(Birr / month)</span>
-          </label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-semibold">Br</span>
-            <input
-              type="number" min="0" step="50"
-              className="input-field pl-9"
-              value={ceiling}
-              onChange={e => setCeiling(e.target.value)}
-              required
-            />
-          </div>
-          <p className="text-[11px] text-gray-400 mt-1">
-            Exempt up to the lesser of this amount or 25% of basic salary.
-          </p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Income Tax Brackets</p>
+          <button
+            type="button"
+            onClick={addBracket}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-700 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add Band
+          </button>
+        </div>
+
+        <p className="text-[11px] text-gray-400 mb-3">
+          Progressive monthly income tax bands (Federal Proclamation No. 979/2016). Leave <strong>To</strong> blank for the top band.
+          Tax = (Taxable Income × Rate%) − Deduction.
+        </p>
+
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-600">From (Br)</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-600">To (Br)</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-600">Rate (%)</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-600">Deduction (Br)</th>
+                <th className="px-3 py-2.5 w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {brackets.map((b, i) => (
+                <tr key={i} className="hover:bg-violet-50/30 transition-colors">
+                  <td className="px-2 py-1.5">
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-semibold">Br</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={b.from}
+                        onChange={e => updateBracket(i, 'from', e.target.value)}
+                        className="w-full h-8 pl-8 pr-2 rounded-lg border border-gray-200 bg-white text-xs text-gray-900 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                      />
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-semibold">Br</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={b.to ?? ''}
+                        placeholder="—"
+                        onChange={e => updateBracket(i, 'to', e.target.value)}
+                        className="w-full h-8 pl-8 pr-2 rounded-lg border border-gray-200 bg-white text-xs text-gray-900 placeholder:text-gray-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                      />
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="relative">
+                      <input
+                        type="number" min="0" max="100" step="0.5"
+                        value={Math.round(b.rate * 100)}
+                        onChange={e => updateBracket(i, 'rate', String(parseFloat(e.target.value) / 100))}
+                        className="w-full h-8 pl-2 pr-6 rounded-lg border border-gray-200 bg-white text-xs text-gray-900 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-semibold">%</span>
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-semibold">Br</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={b.deduction}
+                        onChange={e => updateBracket(i, 'deduction', e.target.value)}
+                        className="w-full h-8 pl-8 pr-2 rounded-lg border border-gray-200 bg-white text-xs text-gray-900 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                      />
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    <button
+                      type="button"
+                      onClick={() => removeBracket(i)}
+                      className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      title="Remove band"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {brackets.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-gray-400 text-xs">
+                    No bands defined. Using system defaults.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -524,7 +628,7 @@ function PayrollSection() {
             onClick={() => {
               setEmpRate(String(Math.round(settings.employee_rate * 100)))
               setErRate(String(Math.round(settings.employer_rate * 100)))
-              setCeiling(String(settings.transport_ceiling))
+              setBrackets(settings.tax_brackets ?? [])
             }}
           >
             Discard
@@ -538,22 +642,22 @@ function PayrollSection() {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
-  { key: 'profile',       label: 'Profile',       icon: User },
-  { key: 'security',      label: 'Security',      icon: Lock },
+  { key: 'profile', label: 'Profile', icon: User },
+  { key: 'security', label: 'Security', icon: Lock },
   { key: 'notifications', label: 'Notifications', icon: Bell },
-  { key: 'preferences',   label: 'Preferences',   icon: Globe },
-  { key: 'payroll',       label: 'Payroll',        icon: DollarSign },
+  { key: 'preferences', label: 'Preferences', icon: Globe },
+  { key: 'payroll', label: 'Payroll', icon: DollarSign },
 ]
 
 export default function SettingsPage() {
-  const [tab, setTab]         = useState<Tab>('profile')
-  const [user, setUser]       = useState<UserProfile | null>(null)
+  const [tab, setTab] = useState<Tab>('profile')
+  const [user, setUser] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     api.get('/api/auth/me')
       .then(r => setUser(r.data))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false))
   }, [])
 
@@ -596,11 +700,10 @@ export default function SettingsPage() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${
-                tab === t.key
+              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${tab === t.key
                   ? 'text-violet-600 border-violet-600 bg-violet-50/50'
                   : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <t.icon className="h-4 w-4" />
               {t.label}
@@ -617,10 +720,10 @@ export default function SettingsPage() {
                 ? <ProfileSection user={user} onUpdate={setUser} />
                 : <p className="text-sm text-gray-400">Could not load profile.</p>
           )}
-          {tab === 'security'      && <SecuritySection />}
+          {tab === 'security' && <SecuritySection />}
           {tab === 'notifications' && <NotificationsSection />}
-          {tab === 'preferences'   && <PreferencesSection />}
-          {tab === 'payroll'       && <PayrollSection />}
+          {tab === 'preferences' && <PreferencesSection />}
+          {tab === 'payroll' && <PayrollSection />}
         </div>
       </div>
     </div>

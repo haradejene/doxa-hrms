@@ -65,6 +65,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/payroll', [PayrollController::class, 'index']);
     Route::get('/payroll/periods', [PayrollController::class, 'periods']);
     Route::post('/payroll/process', [PayrollController::class, 'process']);
+    Route::post('/payroll/draft', [PayrollController::class, 'saveDraft']);
     Route::put('/payroll/items/{id}', [PayrollController::class, 'updateItem']);
     Route::get('/settings/payroll', [PayrollController::class, 'getSettings']);
     Route::put('/settings/payroll', [PayrollController::class, 'updateSettings']);

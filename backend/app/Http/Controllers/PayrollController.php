@@ -28,7 +28,8 @@ class PayrollController extends Controller
         $period = $this->resolvePeriod($request);
         $run    = PayrollRun::with('items')->where('period_key', $period->format('Y-m'))->first();
 
-        $records = $run
+        // A saved-draft run has no items yet — use live calculation so the sheet is still populated.
+        $records = ($run && $run->status === 'approved')
             ? $this->recordsFromRun($run)
             : $this->draftRecords($period);
 
@@ -172,6 +173,59 @@ class PayrollController extends Controller
                 ];
             })
         );
+    }
+
+    /**
+     * Save a period as an explicit draft PayrollRun so it appears in the
+     * switcher even before the full payroll run is executed. The record is
+     * created with status 'draft' and no payroll items — those come from
+     * the live draftRecords() calculation until HR processes the payroll.
+     */
+    public function saveDraft(Request $request)
+    {
+        $request->validate([
+            'period' => ['required', 'date_format:Y-m'],
+        ]);
+
+        $period = self::monthStart($request->input('period'));
+        $key    = $period->format('Y-m');
+
+        $existing = PayrollRun::where('period_key', $key)->first();
+
+        if ($existing) {
+            // Already exists — just return the current sheet without touching it.
+            return response()->json([
+                'message' => 'Payroll period already exists.',
+                'sheet'   => $this->sheet($period, $this->recordsFromRun($existing), $existing),
+            ]);
+        }
+
+        $eth = EthiopianCalendar::describe($period->copy()->endOfMonth());
+
+        $run = PayrollRun::create([
+            'name'         => sprintf('%s %d E.C — %s', $eth['month_name'], $eth['year'], $period->format('F Y')),
+            'period'       => 'monthly',
+            'period_key'   => $key,
+            'start_date'   => $period->copy()->startOfMonth()->toDateString(),
+            'end_date'     => $period->copy()->endOfMonth()->toDateString(),
+            'payment_date' => $period->copy()->endOfMonth()->toDateString(),
+            'status'       => 'draft',
+            'employee_count'         => 0,
+            'total_gross_pay'        => 0,
+            'total_deductions'       => 0,
+            'total_income_tax'       => 0,
+            'total_pension_employee' => 0,
+            'total_pension_employer' => 0,
+            'total_net_pay'          => 0,
+        ]);
+
+        // Return the live draft records so the sheet stays populated.
+        $records = $this->draftRecords($period);
+
+        return response()->json([
+            'message' => sprintf('Draft saved for %s.', $period->format('F Y')),
+            'sheet'   => $this->sheet($period, $records, $run),
+        ], 201);
     }
 
     // ---------------------------------------------------------------------
@@ -437,27 +491,45 @@ class PayrollController extends Controller
     {
         $rates = EthiopianPayrollTax::getRates();
         return response()->json([
-            'employee_rate'    => $rates['employee_rate'],
-            'employer_rate'    => $rates['employer_rate'],
-            'transport_ceiling'=> $rates['transport_ceiling'],
+            'employee_rate'     => $rates['employee_rate'],
+            'employer_rate'     => $rates['employer_rate'],
+            'transport_ceiling' => $rates['transport_ceiling'],
+            'tax_brackets'      => $rates['tax_brackets'],
         ]);
     }
 
     public function updateSettings(Request $request)
     {
         $request->validate([
-            'employee_rate'     => ['required', 'numeric', 'min:0', 'max:1'],
-            'employer_rate'     => ['required', 'numeric', 'min:0', 'max:1'],
-            'transport_ceiling' => ['required', 'numeric', 'min:0'],
+            'employee_rate'            => ['required', 'numeric', 'min:0', 'max:1'],
+            'employer_rate'            => ['required', 'numeric', 'min:0', 'max:1'],
+            'tax_brackets'             => ['nullable', 'array'],
+            'tax_brackets.*.from'      => ['numeric', 'min:0'],
+            'tax_brackets.*.to'        => ['nullable', 'numeric', 'min:0'],
+            'tax_brackets.*.rate'      => ['numeric', 'min:0', 'max:1'],
+            'tax_brackets.*.deduction' => ['numeric', 'min:0'],
         ]);
 
-        $settings = [
-            'employee_rate'     => (float) $request->input('employee_rate'),
-            'employer_rate'     => (float) $request->input('employer_rate'),
-            'transport_ceiling' => (float) $request->input('transport_ceiling'),
-        ];
+        // Read existing file so we don't wipe transport_ceiling (kept from config if absent)
+        $path    = storage_path('app/payroll_settings.json');
+        $existing = file_exists($path) ? (json_decode(file_get_contents($path), true) ?? []) : [];
 
-        $path = storage_path('app/payroll_settings.json');
+        $settings = array_merge($existing, [
+            'employee_rate' => (float) $request->input('employee_rate'),
+            'employer_rate' => (float) $request->input('employer_rate'),
+        ]);
+
+        if ($request->has('tax_brackets') && $request->input('tax_brackets') !== null) {
+            $settings['tax_brackets'] = array_map(function ($b) {
+                return [
+                    'from'      => (float) $b['from'],
+                    'to'        => isset($b['to']) && $b['to'] !== '' && $b['to'] !== null ? (float) $b['to'] : null,
+                    'rate'      => (float) $b['rate'],
+                    'deduction' => (float) $b['deduction'],
+                ];
+            }, $request->input('tax_brackets'));
+        }
+
         if (!is_dir(dirname($path))) {
             mkdir(dirname($path), 0755, true);
         }
@@ -465,7 +537,9 @@ class PayrollController extends Controller
 
         return response()->json([
             'message'  => 'Payroll settings updated successfully.',
-            'settings' => $settings,
+            'settings' => array_merge($settings, [
+                'tax_brackets' => $settings['tax_brackets'] ?? config('payroll.tax_brackets'),
+            ]),
         ]);
     }
 
