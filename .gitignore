@@ -16,3 +16,8 @@
 /backend/.phpunit.result.cache
 /backend/public/storage
 /backend/storage/debugbar/
+
+# Keep the reviewed federation preparation report versionable.
+!/docs
+/docs/*
+!/docs/hrm-integration-analysis.md

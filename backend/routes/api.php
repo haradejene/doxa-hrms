@@ -1,15 +1,16 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\EmployeeController;
-use App\Http\Controllers\JobPostingController;
 use App\Http\Controllers\ApplicationController;
-use App\Http\Controllers\InterviewController;
-use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\InterviewController;
+use App\Http\Controllers\JobPostingController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PerformanceController;
+use App\Http\Middleware\EnsureActiveUser;
+use Illuminate\Support\Facades\Route;
 
 // Public routes - NO authentication required
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -23,56 +24,59 @@ Route::get('/jobs/{id}', [JobPostingController::class, 'show']);
 Route::post('/applications', [ApplicationController::class, 'store']);
 
 // Protected routes - Authentication required
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', EnsureActiveUser::class])->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::put('/auth/password', [AuthController::class, 'changePassword']);
     Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
 
-    // Dashboard routes
-    Route::get('/dashboard/metrics', [DashboardController::class, 'metrics']);
-    Route::get('/dashboard/activities', [DashboardController::class, 'activities']);
-    Route::get('/dashboard/notifications', [DashboardController::class, 'notifications']);
-    Route::get('/dashboard/recent-employees', [DashboardController::class, 'recentEmployees']);
-    Route::get('/dashboard/analytics', [DashboardController::class, 'analytics']);
+    // Interim business boundary pending an approved management/ownership matrix.
+    Route::middleware('role:hr_admin')->group(function () {
+        // Dashboard routes
+        Route::get('/dashboard/metrics', [DashboardController::class, 'metrics']);
+        Route::get('/dashboard/activities', [DashboardController::class, 'activities']);
+        Route::get('/dashboard/notifications', [DashboardController::class, 'notifications']);
+        Route::get('/dashboard/recent-employees', [DashboardController::class, 'recentEmployees']);
+        Route::get('/dashboard/analytics', [DashboardController::class, 'analytics']);
 
-    // Employee routes
-    Route::get('/employees', [EmployeeController::class, 'index']);
-    Route::get('/employees/{id}', [EmployeeController::class, 'show']);
-    Route::post('/employees', [EmployeeController::class, 'store']);
-    Route::put('/employees/{id}', [EmployeeController::class, 'update']);
+        // Employee routes
+        Route::get('/employees', [EmployeeController::class, 'index']);
+        Route::get('/employees/{id}', [EmployeeController::class, 'show']);
+        Route::post('/employees', [EmployeeController::class, 'store']);
+        Route::put('/employees/{id}', [EmployeeController::class, 'update']);
 
-    // Job Posting routes (protected)
-    Route::get('/job-postings', [JobPostingController::class, 'indexAll']);
-    Route::post('/job-postings', [JobPostingController::class, 'store']);
-    Route::put('/job-postings/{id}', [JobPostingController::class, 'update']);
-    Route::delete('/job-postings/{id}', [JobPostingController::class, 'destroy']);
+        // Job Posting routes (protected)
+        Route::get('/job-postings', [JobPostingController::class, 'indexAll']);
+        Route::post('/job-postings', [JobPostingController::class, 'store']);
+        Route::put('/job-postings/{id}', [JobPostingController::class, 'update']);
+        Route::delete('/job-postings/{id}', [JobPostingController::class, 'destroy']);
 
-    // Application routes (protected - HR/admin only)
-    Route::get('/applications', [ApplicationController::class, 'index']);
-    Route::get('/applications/{id}', [ApplicationController::class, 'show']);
-    Route::put('/applications/{id}', [ApplicationController::class, 'update']);
+        // Application routes (protected - HR/admin only)
+        Route::get('/applications', [ApplicationController::class, 'index']);
+        Route::get('/applications/{id}', [ApplicationController::class, 'show']);
+        Route::put('/applications/{id}', [ApplicationController::class, 'update']);
 
-    // Interview routes
-    Route::get('/interviews', [InterviewController::class, 'index']);
-    Route::get('/interviews/{id}', [InterviewController::class, 'show']);
-    Route::post('/interviews', [InterviewController::class, 'store']);
+        // Interview routes
+        Route::get('/interviews', [InterviewController::class, 'index']);
+        Route::get('/interviews/{id}', [InterviewController::class, 'show']);
+        Route::post('/interviews', [InterviewController::class, 'store']);
 
-    // Foundational modules
-    Route::get('/attendance', [AttendanceController::class, 'index']);
-    Route::post('/attendance', [AttendanceController::class, 'store']);
-    Route::post('/attendance/bulk', [AttendanceController::class, 'bulkStore']);
-    Route::get('/payroll', [PayrollController::class, 'index']);
-    Route::get('/payroll/periods', [PayrollController::class, 'periods']);
-    Route::post('/payroll/process', [PayrollController::class, 'process']);
-    Route::post('/payroll/draft', [PayrollController::class, 'saveDraft']);
-    Route::put('/payroll/items/{id}', [PayrollController::class, 'updateItem']);
-    Route::get('/settings/payroll', [PayrollController::class, 'getSettings']);
-    Route::put('/settings/payroll', [PayrollController::class, 'updateSettings']);
+        // Foundational modules
+        Route::get('/attendance', [AttendanceController::class, 'index']);
+        Route::post('/attendance', [AttendanceController::class, 'store']);
+        Route::post('/attendance/bulk', [AttendanceController::class, 'bulkStore']);
+        Route::get('/payroll', [PayrollController::class, 'index']);
+        Route::get('/payroll/periods', [PayrollController::class, 'periods']);
+        Route::post('/payroll/process', [PayrollController::class, 'process']);
+        Route::post('/payroll/draft', [PayrollController::class, 'saveDraft']);
+        Route::put('/payroll/items/{id}', [PayrollController::class, 'updateItem']);
+        Route::get('/settings/payroll', [PayrollController::class, 'getSettings']);
+        Route::put('/settings/payroll', [PayrollController::class, 'updateSettings']);
 
-    // Performance routes
-    Route::get('/performance', [PerformanceController::class, 'index']);
-    Route::post('/performance', [PerformanceController::class, 'store']);
-    Route::put('/performance/{id}', [PerformanceController::class, 'update']);
-    Route::delete('/performance/{id}', [PerformanceController::class, 'destroy']);
+        // Performance routes
+        Route::get('/performance', [PerformanceController::class, 'index']);
+        Route::post('/performance', [PerformanceController::class, 'store']);
+        Route::put('/performance/{id}', [PerformanceController::class, 'update']);
+        Route::delete('/performance/{id}', [PerformanceController::class, 'destroy']);
+    });
 });

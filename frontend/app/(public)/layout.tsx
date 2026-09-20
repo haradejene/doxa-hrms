@@ -1,10 +1,6 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import Link from 'next/link'
 import Image from 'next/image'
-import '../globals.css'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Doxa Careers',
@@ -13,9 +9,7 @@ export const metadata: Metadata = {
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} bg-white`}>
-
+    <>
         {/* ─── Navbar ─── */}
         <header className="fixed top-0 inset-x-0 z-50 bg-white/90 backdrop-blur-xl border-b border-gray-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex h-16 items-center justify-between">
@@ -66,7 +60,6 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
           </div>
         </footer>
 
-      </body>
-    </html>
+    </>
   )
 }
