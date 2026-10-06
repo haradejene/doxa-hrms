@@ -12,6 +12,20 @@ class VerifyCsrfToken extends Middleware
      * @var array<int, string>
      */
     protected $except = [
-       'api/*', //
+        'api/*',
     ];
+
+    /**
+     * Preserve cookieless API clients, but never exempt browser sessions.
+     */
+    protected function inExceptArray($request)
+    {
+        if ($request->is('api/*') && $request->hasSession()
+            && ($request->hasCookie(config('session.cookie'))
+                || $this->app['auth']->guard('web')->check())) {
+            return false;
+        }
+
+        return parent::inExceptArray($request);
+    }
 }
