@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import api from "@/services/api";
+import { clearLocalAuth } from "@/services/auth-storage";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -148,6 +149,17 @@ export default function LoginPage() {
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
+
+          <a
+            href="/auth/doxa"
+            onClick={() => {
+              // Discard only legacy frontend credentials, never the HRM session.
+              try { clearLocalAuth(); } catch { /* Storage may be unavailable. */ }
+            }}
+            className="mt-4 flex w-full items-center justify-center rounded-lg border border-purple-600 px-4 py-2.5 font-medium text-purple-700 hover:bg-purple-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+          >
+            Continue with Doxa
+          </a>
 
           <div className="mt-6 text-center text-sm text-gray-500">
             <Link

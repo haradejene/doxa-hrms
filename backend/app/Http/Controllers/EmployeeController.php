@@ -21,6 +21,10 @@ class EmployeeController extends Controller
         $employee = Employee::with(['user', 'department', 'position', 'manager'])
             ->findOrFail($id);
 
+        $employee->setAttribute('doxa_identities', $employee->user
+            ? $employee->user->externalIdentities()->where('issuer', config('doxa.issuer'))->get(['issuer', 'subject'])
+            : []);
+
         return response()->json($employee);
     }
 

@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import api from '@/services/api'
 import { ArrowLeft, User, Mail, Phone, Briefcase, Calendar, Edit2, Check, X } from 'lucide-react'
 import Link from 'next/link'
+import DoxaIdentity from '@/components/DoxaIdentity'
 
 interface Employee {
   id: number
+  doxa_identities?: { issuer: string; subject: string }[]
   first_name: string
   last_name: string
   email: string
@@ -27,8 +29,10 @@ export default function EmployeeDetailPage({ params }: { params: { id: string } 
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState<Partial<Employee>>({})
   const [error, setError] = useState('')
+  const [linkedMessage, setLinkedMessage] = useState(false)
 
   useEffect(() => {
+    setLinkedMessage(new URLSearchParams(window.location.search).get('doxa_link') === 'success')
     fetchEmployee()
   }, [params.id])
 
@@ -248,6 +252,8 @@ export default function EmployeeDetailPage({ params }: { params: { id: string } 
           </div>
         </div>
       </div>
+      <DoxaIdentity employeeId={employee.id} identities={employee.doxa_identities} />
+      {linkedMessage && employee.doxa_identities?.length ? <p role="status" className="text-emerald-700">Doxa identity linked successfully.</p> : null}
     </div>
   )
 }

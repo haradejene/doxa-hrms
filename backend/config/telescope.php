@@ -113,6 +113,8 @@ return [
     ],
 
     'ignore_paths' => [
+        // Authorization/callback traffic must not enter request diagnostics.
+        'auth/doxa*',
         'livewire*',
         'nova-api*',
         'pulse*',
