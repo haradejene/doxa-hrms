@@ -12,7 +12,10 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        $schedule->command('doxa:reconcile-links')->everyMinute()->withoutOverlapping();
+        if (config('doxa.credentials.enabled')) {
+            $schedule->command('doxa:credentials:cleanup')->everyMinute()->withoutOverlapping();
+        }
     }
 
     /**

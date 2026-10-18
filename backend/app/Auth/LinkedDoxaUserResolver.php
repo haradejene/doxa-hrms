@@ -21,6 +21,7 @@ final class LinkedDoxaUserResolver
         $link = ExternalIdentity::query()
             ->where('issuer', $issuer)
             ->where('subject', $subject)
+            ->whereNull('pending_link_id')
             ->with('user')
             ->first();
 

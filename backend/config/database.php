@@ -35,6 +35,13 @@ return [
 
     'connections' => [
 
+        'doxa_credentials' => [
+            'driver' => 'sqlite',
+            'database' => env('DOXA_CREDENTIAL_DATABASE') ?: database_path('doxa-credentials.sqlite'),
+            'prefix' => '',
+            'foreign_key_constraints' => true,
+        ],
+
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DATABASE_URL'),

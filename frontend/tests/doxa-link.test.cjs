@@ -10,6 +10,7 @@ function mount(file, props, api) {
   const react = {
     createElement(type, props, ...children) { return { type, props: props || {}, children: children.flat(Infinity) }; },
     useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], v => { states[i] = v; }]; },
+    useRef(initial) { const i = cursor++; if (!(i in states)) states[i] = { current: initial }; return states[i]; },
     useEffect(fn) { const i = cursor++; if (!(i in states)) { states[i] = true; effects.push(fn); } },
   };
   const context = { exports: {}, URLSearchParams, React: react,
@@ -23,7 +24,7 @@ function mount(file, props, api) {
   function render() { cursor = 0; tree = component(props); return tree; }
   function visit(node) { return node && typeof node === 'object' ? [node, ...node.children.flatMap(visit)] : []; }
   function nodes() { return visit(tree); }
-  function text(node = tree) { return node && typeof node === 'object' ? node.children.map(text).join(' ') : String(node ?? ''); }
+  function text(node) { if (arguments.length === 0) node = tree; return node && typeof node === 'object' ? node.children.map(text).join(' ') : String(node ?? ''); }
   render();
   return { render, nodes, text, destinations, async settle() { effects.splice(0).forEach(fn => fn()); await new Promise(resolve => setImmediate(resolve)); render(); } };
 }
@@ -78,7 +79,7 @@ test('confirmation shows verified profile, submits no identity or target, and su
 test('conflict prevents further confirmation and provides recovery', async () => {
   const app = mount(confirmation, { params: { id: 'opaque' } }, {
     get: async () => ({ data: { employee_name: 'Local', identity: { issuer: 'issuer', subject: 'subject' } } }),
-    post: async () => { throw new Error('conflict'); },
+    post: async () => { throw { response: { status: 409, data: { error: 'identity_conflict' } } }; },
   });
   await app.settle();
   await app.nodes().find(n => n.type === 'button').props.onClick(); app.render();
@@ -104,4 +105,75 @@ test('initiation failure is visible and releases the pending button', async () =
   assert.match(app.text(), /Unable to start linking/);
   assert.doesNotMatch(app.text(), /PRIVATE-CODE/);
   assert.equal(app.nodes().find(n => n.type === 'button').props.disabled, false);
+});
+
+
+test('processing confirmation checks status without repeating a mutation', async () => {
+  let reads = 0, writes = 0;
+  const app = mount(confirmation, { params: { id: 'opaque' } }, {
+    get: async () => ({ data: ++reads === 1 ? { status: 'verified', employee_name: 'Local', identity: { issuer: 'issuer', subject: 'subject' } } : { status: 'completed', destination: '/employees/12?doxa_link=success' } }),
+    post: async () => { writes++; return { data: { status: 'processing' } }; },
+  });
+  await app.settle();
+  await app.nodes().find(n => n.type === 'button').props.onClick(); app.render();
+  assert.match(app.text(), /still processing/);
+  assert.equal(app.destinations.length, 0);
+  await app.nodes().find(n => n.type === 'button').props.onClick(); app.render();
+  assert.equal(writes, 1);
+  assert.equal(app.destinations[0], '/employees/12?doxa_link=success');
+});
+
+test('lost response offers read-only recovery and never displays provider errors', async () => {
+  let reads = 0;
+  const app = mount(confirmation, { params: { id: 'opaque' } }, {
+    get: async () => ({ data: ++reads === 1 ? { employee_name: 'Local', identity: { issuer: 'issuer', subject: 'subject' } } : { status: 'verified', employee_name: 'Local', identity: { issuer: 'issuer', subject: 'subject' } } }),
+    post: async () => { throw new Error('PRIVATE-ACCESS'); },
+  });
+  await app.settle();
+  await app.nodes().find(n => n.type === 'button').props.onClick(); app.render();
+  assert.match(app.text(), /Check result/);
+  assert.doesNotMatch(app.text(), /PRIVATE-ACCESS/);
+  await app.nodes().find(n => n.type === 'button').props.onClick(); app.render();
+  assert.match(app.text(), /confirm it again/);
+  assert.match(app.text(), /Confirm link/);
+});
+
+test('expired recovery stops polling and gives an existing HRM return path', async () => {
+  let reads = 0;
+  const app = mount(confirmation, { params: { id: 'opaque' } }, {
+    get: async () => {
+      if (++reads === 1) return { data: { status: 'processing' } };
+      throw { response: { status: 409, data: { error: 'transaction_expired' } } };
+    },
+  });
+  await app.settle();
+  await app.nodes().find(n => n.type === 'button').props.onClick(); app.render();
+  assert.match(app.text(), /expired/);
+  assert.equal(app.nodes().filter(n => n.type === 'button').length, 0);
+  assert.match(app.text(), /Return to employees/);
+});
+
+test('a completed receipt redirects directly without displaying another confirmation', async () => {
+  const app = mount(confirmation, { params: { id: 'opaque' } }, {
+    get: async () => ({ data: { status: 'completed', destination: '/employees/12?doxa_link=success' } }),
+  });
+  await app.settle();
+  assert.equal(app.destinations[0], '/employees/12?doxa_link=success');
+  assert.equal(app.nodes().filter(n => n.type === 'button').length, 0);
+});
+
+
+test('same-tick duplicate confirmation dispatches only once', async () => {
+  let resolve, writes = 0;
+  const app = mount(confirmation, { params: { id: 'opaque' } }, {
+    get: async () => ({ data: { employee_name: 'Local', identity: { issuer: 'issuer', subject: 'subject' } } }),
+    post: () => { writes++; return new Promise(r => { resolve = r; }); },
+  });
+  await app.settle();
+  const submit = app.nodes().find(n => n.type === 'button').props.onClick;
+  const first = submit();
+  await submit();
+  assert.equal(writes, 1);
+  resolve({ data: { destination: '/employees/12' } });
+  await first;
 });

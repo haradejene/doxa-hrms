@@ -22,7 +22,7 @@ class EmployeeController extends Controller
             ->findOrFail($id);
 
         $employee->setAttribute('doxa_identities', $employee->user
-            ? $employee->user->externalIdentities()->where('issuer', config('doxa.issuer'))->get(['issuer', 'subject'])
+            ? $employee->user->externalIdentities()->whereNull('pending_link_id')->where('issuer', config('doxa.issuer'))->get(['issuer', 'subject'])
             : []);
 
         return response()->json($employee);

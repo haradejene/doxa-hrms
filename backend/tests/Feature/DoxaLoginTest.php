@@ -6,6 +6,7 @@ use App\Models\User;
 use Doxa\Laravel\Contracts\Transport;
 use Doxa\Laravel\Transaction\AuthorizationTransaction;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Fixtures\OidcProviderTransport as Provider;
@@ -40,6 +41,7 @@ class DoxaLoginTest extends TestCase
             '2026_09_15_000000_create_external_identities_table.php'] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
+        Schema::table('external_identities', fn ($table) => $table->string('pending_link_id', 64)->nullable());
         $this->provider = new Provider;
         $this->app->instance(Transport::class, $this->provider);
     }
@@ -434,6 +436,15 @@ class DoxaLoginTest extends TestCase
         $this->begin();
         Schema::drop('external_identities');
         $this->completeCallback()->assertStatus(503)->assertExactJson(['error' => 'authentication_unavailable']);
+        $this->assertGuest('web');
+    }
+
+    public function test_provisional_mapping_cannot_establish_a_local_session(): void
+    {
+        $user = $this->linkedUser();
+        DB::table('external_identities')->where('user_id', $user->id)->update(['pending_link_id' => str_repeat('a', 64)]);
+        $this->begin();
+        $this->completeCallback()->assertForbidden();
         $this->assertGuest('web');
     }
 }
