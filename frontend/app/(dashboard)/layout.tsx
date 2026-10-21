@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { X } from 'lucide-react'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
+import { useCurrentUser } from '@/services/current-user'
 
 export default function DashboardLayout({
   children,
@@ -13,6 +14,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const user = useCurrentUser()
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -28,20 +30,20 @@ export default function DashboardLayout({
               <X className="h-6 w-6 text-white" />
             </button>
           </div>
-          <Sidebar pathname={pathname} />
+          <Sidebar pathname={pathname} user={user} />
         </div>
       </div>
 
       {/* Desktop sidebar */}
       <div data-no-print className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
-        <Sidebar pathname={pathname} />
+        <Sidebar pathname={pathname} user={user} />
       </div>
 
       {/* Main content */}
       <div className="flex-1 lg:pl-64 print:pl-0 flex flex-col min-h-screen w-full">
         {/* Top bar */}
         <div data-no-print>
-          <Header onMenuClick={() => setSidebarOpen(true)} />
+          <Header onMenuClick={() => setSidebarOpen(true)} user={user} />
         </div>
 
         {/* Page content */}

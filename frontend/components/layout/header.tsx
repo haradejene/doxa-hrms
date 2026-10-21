@@ -5,9 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import api from "@/services/api";
 import { clearLocalAuth } from "@/services/auth-storage";
 import { useState, useEffect, useRef } from "react";
+import type { CurrentUser } from '@/services/current-user';
 
 interface HeaderProps {
   onMenuClick: () => void;
+  user: CurrentUser | null;
 }
 
 const pageTitles: Record<string, { title: string; desc: string }> = {
@@ -42,7 +44,7 @@ const pageTitles: Record<string, { title: string; desc: string }> = {
   "/settings": { title: "Settings", desc: "Configure your preferences." },
 };
 
-export function Header({ onMenuClick }: HeaderProps) {
+export function Header({ onMenuClick, user }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -211,14 +213,14 @@ export function Header({ onMenuClick }: HeaderProps) {
               className="flex items-center gap-2 p-1.5 pr-3 rounded-xl hover:bg-gray-100 transition-colors"
             >
               <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 flex items-center justify-center text-white font-semibold text-sm shadow-md shadow-purple-500/30">
-                HR
+                {user?.name?.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase() || '?'}
               </div>
               <div className="hidden sm:block text-left">
                 <p className="text-sm font-semibold text-gray-900 leading-tight">
-                  HR Admin
+                  {user?.name || 'Account'}
                 </p>
                 <p className="text-[11px] text-gray-400 leading-tight">
-                  admin@doxa.com
+                  {user?.email || ''}
                 </p>
               </div>
               <ChevronDown className="h-4 w-4 text-gray-400 hidden sm:block" />
@@ -228,9 +230,9 @@ export function Header({ onMenuClick }: HeaderProps) {
               <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 py-1 z-50">
                 <div className="px-4 py-3 border-b border-gray-100">
                   <p className="text-sm font-semibold text-gray-900">
-                    HR Admin
+                    {user?.name || 'Account'}
                   </p>
-                  <p className="text-xs text-gray-500">admin@doxa.com</p>
+                  <p className="text-xs text-gray-500">{user?.email || ''}</p>
                 </div>
                 <button
                   onClick={handleLogout}

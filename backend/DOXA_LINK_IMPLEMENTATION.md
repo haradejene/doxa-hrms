@@ -1,5 +1,17 @@
 # HRM pending-link completion — 2026-10-17
 
+## Account-resolution update — 2026-10-21
+
+The pending-link protocol below is retained. Ordinary login now uses an additive
+SDK access-checked account-resolution API and explicit HRM first-login policy.
+See [DOXA_ACCOUNT_RESOLUTION.md](DOXA_ACCOUNT_RESOLUTION.md) for the current
+provisioning, verified-email, collision, default-role and operator-linking contract.
+The later explicitly authorized local administrator link and its audit are
+recorded in `LOCAL_IAM_VERIFICATION.md`. The historical no-provisioning statements below
+describe the original pending-link implementation, not the new ordinary-login
+policy. The shared SDK now has additive resolution APIs and host-interface tests;
+existing ordinary and managed-link APIs remain compatible.
+
 ## Repository scope
 
 Backend and frontend share Git root `C:/Users/Alif Computer/Documents/Github/doxa-hrms`.
@@ -172,4 +184,5 @@ Frontend:
 - `app/(dashboard)/employees/doxa-link/[id]/page.tsx`
 - `tests/doxa-link.test.cjs`
 
-SDK repository: no files changed by this task.
+SDK repository: no files changed during the original pending-link task. Later
+account-resolution changes are recorded in `DOXA_ACCOUNT_RESOLUTION.md`.

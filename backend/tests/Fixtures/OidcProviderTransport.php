@@ -18,6 +18,7 @@ final class OidcProviderTransport implements Transport
     public const CALLBACK = 'https://hrm.example.test/auth/doxa/callback';
 
     public array $authorization = [];
+
     public string $callback = self::CALLBACK;
 
     public array $claims = [];
@@ -31,6 +32,12 @@ final class OidcProviderTransport implements Transport
     public bool $badSignature = false;
 
     public bool $discoveryFailure = false;
+
+    public array $accessDecision = ['effective' => true];
+
+    public bool $accessUnavailable = false;
+
+    public int $accessChecks = 0;
 
     public ?Closure $onExchange = null;
 
@@ -69,11 +76,19 @@ final class OidcProviderTransport implements Transport
                 'response_types_supported' => ['code'], 'response_modes_supported' => ['query'],
                 'grant_types_supported' => ['authorization_code'], 'subject_types_supported' => ['public'],
                 'code_challenge_methods_supported' => ['S256'], 'id_token_signing_alg_values_supported' => ['RS256'],
-                'scopes_supported' => ['openid'], 'token_endpoint_auth_methods_supported' => ['none', 'client_secret_basic'],
+                'scopes_supported' => ['openid', 'profile', 'email'], 'token_endpoint_auth_methods_supported' => ['none', 'client_secret_basic'],
             ]);
         }
         if ($method === 'GET' && $url === self::ISSUER.'/oauth/jwks') {
             return new JsonResponse(['keys' => [$this->jwk]]);
+        }
+        if ($method === 'GET' && $url === self::ISSUER.'/oauth/application-access') {
+            $this->accessChecks++;
+            if ($this->accessUnavailable || ($options['headers']['Authorization'] ?? null) !== 'Bearer PRIVATE-ACCESS') {
+                throw new RuntimeException('Synthetic access failure');
+            }
+
+            return new JsonResponse($this->accessDecision);
         }
         if ($url === self::ISSUER.'/oauth/userinfo') {
             $this->userinfoCalls++;

@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Auth\LinkedDoxaUserResolver;
+use App\Auth\DoxaAccountResolver;
 use Doxa\Laravel\DoxaClient;
 use Doxa\Laravel\Exceptions\ConfigurationException;
 use Doxa\Laravel\Exceptions\DoxaException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 final class DoxaLoginController extends Controller
@@ -27,28 +28,37 @@ final class DoxaLoginController extends Controller
         }
     }
 
-    public function callback(#[\SensitiveParameter] Request $request, LinkedDoxaUserResolver $users)
+    public function callback(#[\SensitiveParameter] Request $request, DoxaAccountResolver $users)
     {
+        $stage = 'destination_configuration';
         try {
             // No session rotation or local authentication before SDK validation.
-            $identity = app(DoxaClient::class)->handleCallback($request);
-            $user = $users->resolve($identity);
+            $destination = $this->dashboardDestination();
+            $stage = 'sdk_callback_and_account_resolution';
+            $user = app(DoxaClient::class)->resolveAccount($request, $users);
 
             if ($user === null) {
                 return response()->json(['error' => 'access_denied'], 403);
             }
 
-            $destination = $this->dashboardDestination();
             // SessionGuard::login destroys/migrates the old ID after validation.
+            $stage = 'local_session';
             Auth::guard('web')->login($user, false);
             $request->session()->regenerateToken();
+            Log::info('doxa.login.session_established', ['user_id' => $user->getAuthIdentifier()]);
 
             // Keep /dashboard relative to the public browser origin even when
             // a trusted proxy forwards to an internal backend host.
             return new RedirectResponse($destination);
         } catch (DoxaException $exception) {
+            Log::notice('doxa.login.sdk_denied', ['stage' => $stage, 'category' => $exception->category,
+                'exception_class' => get_class($exception)]);
+
             return response()->json(['error' => $exception->category], 400);
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            Log::error('doxa.login.failed', ['stage' => $stage, 'exception_class' => get_class($exception),
+                'source' => basename($exception->getFile()), 'line' => $exception->getLine()]);
+
             // Never report raw callback/provider/SQL exceptions to the browser.
             return response()->json(['error' => 'authentication_unavailable'], 503);
         }

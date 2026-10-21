@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
+import type { CurrentUser } from '@/services/current-user'
 import {
   LayoutDashboard,
   Users,
@@ -47,9 +48,10 @@ const navGroups = [
 
 interface SidebarProps {
   pathname: string
+  user: CurrentUser | null
 }
 
-export function Sidebar({ pathname }: SidebarProps) {
+export function Sidebar({ pathname, user }: SidebarProps) {
   return (
     <div
       className="flex flex-1 flex-col h-full overflow-y-auto"
@@ -123,11 +125,11 @@ export function Sidebar({ pathname }: SidebarProps) {
           style={{ backgroundColor: '#f0ede8', border: '1px solid #e5e0d8' }}
         >
           <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-            HR
+            {user?.name?.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase() || '?'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-gray-800 truncate">HR Admin</p>
-            <p className="text-[10px] text-gray-400 truncate">admin@doxa.com</p>
+            <p className="text-xs font-semibold text-gray-800 truncate">{user?.name || 'Account'}</p>
+            <p className="text-[10px] text-gray-400 truncate">{user?.email || ''}</p>
           </div>
           <div className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" title="Online" />
         </div>

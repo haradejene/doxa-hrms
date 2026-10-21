@@ -5,7 +5,7 @@ return [
     'client_id' => env('DOXA_CLIENT_ID'),
     'client_secret' => env('DOXA_CLIENT_SECRET') === '' ? null : env('DOXA_CLIENT_SECRET'),
     'redirect_uri' => env('DOXA_REDIRECT_URI'),
-    'scopes' => ['openid'],
+    'scopes' => ['openid', 'profile', 'email'],
     'pkce_required' => true,
     'timeout' => 10,
     'discovery_cache_ttl' => 300,
