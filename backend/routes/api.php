@@ -8,6 +8,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\InterviewController;
 use App\Http\Controllers\JobPostingController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\UserAccessController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Middleware\EnsureActiveUser;
 use Illuminate\Support\Facades\Route;
@@ -72,6 +73,10 @@ Route::middleware(['auth:sanctum', EnsureActiveUser::class])->group(function () 
         Route::put('/payroll/items/{id}', [PayrollController::class, 'updateItem']);
         Route::get('/settings/payroll', [PayrollController::class, 'getSettings']);
         Route::put('/settings/payroll', [PayrollController::class, 'updateSettings']);
+
+        // User access management (grant/revoke HRM access)
+        Route::get('/settings/users', [UserAccessController::class, 'index']);
+        Route::put('/settings/users/{id}/access', [UserAccessController::class, 'updateAccess']);
 
         // Performance routes
         Route::get('/performance', [PerformanceController::class, 'index']);

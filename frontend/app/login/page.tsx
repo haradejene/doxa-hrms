@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -17,6 +17,24 @@ export default function LoginPage() {
     password: "",
   });
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let token: string | null = null;
+    try {
+      token = localStorage.getItem("auth_token");
+    } catch {
+      // Storage unavailable
+    }
+    if (token) {
+      api.get("/api/auth/me")
+        .then(() => {
+          router.replace("/dashboard");
+        })
+        .catch(() => {
+          clearLocalAuth();
+        });
+    }
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

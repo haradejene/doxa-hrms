@@ -1,0 +1,2719 @@
+diff --git a/backend/.env.example b/backend/.env.example
+index a583736..beda962 100644
+--- a/backend/.env.example
++++ b/backend/.env.example
+@@ -31,6 +31,17 @@ SESSION_DOMAIN=null
+ SANCTUM_STATEFUL_DOMAINS=localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1,localhost:8000
+ CORS_ALLOWED_ORIGINS=http://localhost:3000
+ 
++# Registered Doxa OIDC client: exact HTTPS issuer and callback; no local HTTP bypass.
++# Keep these values server-side. A secret is needed only for a confidential client.
++DOXA_ISSUER=
++DOXA_CLIENT_ID=
++DOXA_CLIENT_SECRET=
++DOXA_REDIRECT_URI=
++# Empty uses the host's default persistent cache store.
++DOXA_CACHE_STORE=
++# Optional trusted HTTPS frontend origin; empty redirects to /dashboard on this origin.
++HRM_FRONTEND_URL=
++
+ MEMCACHED_HOST=127.0.0.1
+ 
+ REDIS_HOST=127.0.0.1
+@@ -66,3 +77,10 @@ VITE_PUSHER_HOST="${PUSHER_HOST}"
+ VITE_PUSHER_PORT="${PUSHER_PORT}"
+ VITE_PUSHER_SCHEME="${PUSHER_SCHEME}"
+ VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
++
++# Dedicated OIDC callback must already be registered for the HRM client in IAM.
++DOXA_LINK_REDIRECT_URI=
++# Existing IAM application's public UUID and approved server-only read credential.
++# Linking fails closed if these are absent. Never use NEXT_PUBLIC_* for secrets.
++DOXA_HRM_APPLICATION_ID=
++DOXA_ACCESS_READ_TOKEN=
+diff --git a/backend/app/Http/Controllers/EmployeeController.php b/backend/app/Http/Controllers/EmployeeController.php
+index 294b5ab..7150f36 100644
+--- a/backend/app/Http/Controllers/EmployeeController.php
++++ b/backend/app/Http/Controllers/EmployeeController.php
+@@ -21,6 +21,10 @@ public function show($id)
+         $employee = Employee::with(['user', 'department', 'position', 'manager'])
+             ->findOrFail($id);
+ 
++        $employee->setAttribute('doxa_identities', $employee->user
++            ? $employee->user->externalIdentities()->where('issuer', config('doxa.issuer'))->get(['issuer', 'subject'])
++            : []);
++
+         return response()->json($employee);
+     }
+ 
+diff --git a/backend/config/telescope.php b/backend/config/telescope.php
+index 6250e78..53f2f1e 100644
+--- a/backend/config/telescope.php
++++ b/backend/config/telescope.php
+@@ -113,6 +113,8 @@
+     ],
+ 
+     'ignore_paths' => [
++        // Authorization/callback traffic must not enter request diagnostics.
++        'auth/doxa*',
+         'livewire*',
+         'nova-api*',
+         'pulse*',
+diff --git a/backend/routes/web.php b/backend/routes/web.php
+index d259f33..d535620 100644
+--- a/backend/routes/web.php
++++ b/backend/routes/web.php
+@@ -1,5 +1,7 @@
+ <?php
+ 
++use App\Http\Controllers\DoxaLoginController;
++use Doxa\Laravel\Http\SecureCallbackResponse;
+ use Illuminate\Support\Facades\Route;
+ 
+ /*
+@@ -16,3 +18,17 @@
+ Route::get('/', function () {
+     return view('welcome');
+ });
++
++Route::get('/auth/doxa', [DoxaLoginController::class, 'login'])
++    ->middleware(SecureCallbackResponse::class)->name('auth.doxa');
++Route::get('/auth/doxa/callback', [DoxaLoginController::class, 'callback'])
++    ->middleware(SecureCallbackResponse::class)->name('auth.doxa.callback');
++
++// Browser-session only; web middleware protects every POST with CSRF.
++Route::middleware([SecureCallbackResponse::class, 'throttle:30,1'])->group(function () {
++    Route::post('/auth/doxa/employees/{employee}/link', [\App\Http\Controllers\DoxaLinkController::class, 'initiate']);
++    Route::get('/auth/doxa/link/callback', [\App\Http\Controllers\DoxaLinkController::class, 'callback']);
++    Route::get('/auth/doxa/link/{id}', [\App\Http\Controllers\DoxaLinkController::class, 'show']);
++    Route::post('/auth/doxa/link/{id}/confirm', [\App\Http\Controllers\DoxaLinkController::class, 'confirm']);
++    Route::post('/auth/doxa/link/{id}/cancel', [\App\Http\Controllers\DoxaLinkController::class, 'cancel']);
++});
+diff --git a/frontend/app/(dashboard)/employees/[id]/page.tsx b/frontend/app/(dashboard)/employees/[id]/page.tsx
+index eeef3f4..e0dccea 100644
+--- a/frontend/app/(dashboard)/employees/[id]/page.tsx
++++ b/frontend/app/(dashboard)/employees/[id]/page.tsx
+@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
+ import api from '@/services/api'
+ import { ArrowLeft, User, Mail, Phone, Briefcase, Calendar, Edit2, Check, X } from 'lucide-react'
+ import Link from 'next/link'
++import DoxaIdentity from '@/components/DoxaIdentity'
+ 
+ interface Employee {
+   id: number
++  doxa_identities?: { issuer: string; subject: string }[]
+   first_name: string
+   last_name: string
+   email: string
+@@ -27,8 +29,10 @@ export default function EmployeeDetailPage({ params }: { params: { id: string }
+   const [isEditing, setIsEditing] = useState(false)
+   const [formData, setFormData] = useState<Partial<Employee>>({})
+   const [error, setError] = useState('')
++  const [linkedMessage, setLinkedMessage] = useState(false)
+ 
+   useEffect(() => {
++    setLinkedMessage(new URLSearchParams(window.location.search).get('doxa_link') === 'success')
+     fetchEmployee()
+   }, [params.id])
+ 
+@@ -248,6 +252,8 @@ export default function EmployeeDetailPage({ params }: { params: { id: string }
+           </div>
+         </div>
+       </div>
++      <DoxaIdentity employeeId={employee.id} identities={employee.doxa_identities} />
++      {linkedMessage && employee.doxa_identities?.length ? <p role="status" className="text-emerald-700">Doxa identity linked successfully.</p> : null}
+     </div>
+   )
+ }
+diff --git a/frontend/app/login/page.tsx b/frontend/app/login/page.tsx
+index 22fd277..6462380 100644
+--- a/frontend/app/login/page.tsx
++++ b/frontend/app/login/page.tsx
+@@ -6,6 +6,7 @@ import Image from "next/image";
+ import Link from "next/link";
+ import { Eye, EyeOff, LogIn } from "lucide-react";
+ import api from "@/services/api";
++import { clearLocalAuth } from "@/services/auth-storage";
+ 
+ export default function LoginPage() {
+   const router = useRouter();
+@@ -149,6 +150,17 @@ export default function LoginPage() {
+             </button>
+           </form>
+ 
++          <a
++            href="/auth/doxa"
++            onClick={() => {
++              // Discard only legacy frontend credentials, never the HRM session.
++              try { clearLocalAuth(); } catch { /* Storage may be unavailable. */ }
++            }}
++            className="mt-4 flex w-full items-center justify-center rounded-lg border border-purple-600 px-4 py-2.5 font-medium text-purple-700 hover:bg-purple-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
++          >
++            Continue with Doxa
++          </a>
++
+           <div className="mt-6 text-center text-sm text-gray-500">
+             <Link
+               href="/"
+diff --git a/frontend/middleware.ts b/frontend/middleware.ts
+index 652f2a7..24b704c 100644
+--- a/frontend/middleware.ts
++++ b/frontend/middleware.ts
+@@ -1,26 +1,37 @@
+ import { NextResponse } from 'next/server'
+ import type { NextRequest } from 'next/server'
+ 
+-export function middleware(request: NextRequest) {
++export async function middleware(request: NextRequest) {
+   const token = request.cookies.get('auth_token')?.value
+   const { pathname } = request.nextUrl
+ 
+-  // Public routes (no authentication required)
+-  const publicRoutes = ['/', '/careers', '/careers/jobs', '/careers/jobs/:path*', '/careers/apply/:path*', '/login', '/about']
+-  const isPublicRoute = publicRoutes.some(route => pathname === route || pathname.startsWith(route.replace(':path*', '')))
+-
+   // Protected dashboard routes
+   const dashboardRoutes = ['/dashboard', '/employees', '/recruitment', '/payroll', '/attendance', '/performance', '/analytics', '/settings']
+   const isDashboardRoute = dashboardRoutes.some(route => pathname === route || pathname.startsWith(route + '/'))
+ 
+-  // If trying to access dashboard without token, redirect to login
+-  if (isDashboardRoute && !token) {
+-    return NextResponse.redirect(new URL('/login', request.url))
+-  }
+-
+-  // If trying to access login with token, redirect to dashboard
+-  if (pathname === '/login' && token) {
+-    return NextResponse.redirect(new URL('/dashboard', request.url))
++  // Verify either a Laravel session or the existing password-login bearer token.
++  // Cookie presence alone is never proof of authentication.
++  if (isDashboardRoute || pathname === '/login') {
++    let authenticated = false
++    const backend = (process.env.HRM_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
++    try {
++      const headers = new Headers({ Accept: 'application/json', Origin: request.nextUrl.origin })
++      const cookies = request.headers.get('cookie')
++      if (cookies) headers.set('Cookie', cookies)
++      if (token) headers.set('Authorization', `Bearer ${token}`)
++      const response = await fetch(`${backend}/api/auth/me`, {
++        headers, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(5000),
++      })
++      authenticated = response.ok
++    } catch {
++      // A backend outage must not grant access based on a browser token/cookie.
++    }
++    if (isDashboardRoute && !authenticated) {
++      return NextResponse.redirect(new URL('/login', request.url))
++    }
++    if (pathname === '/login' && authenticated) {
++      return NextResponse.redirect(new URL('/dashboard', request.url))
++    }
+   }
+ 
+   return NextResponse.next()
+diff --git a/frontend/next.config.js b/frontend/next.config.js
+index d00a33b..48c4d65 100644
+--- a/frontend/next.config.js
++++ b/frontend/next.config.js
+@@ -4,11 +4,17 @@ const nextConfig = {
+     domains: ['localhost'],
+   },
+   async rewrites() {
++    // Browser traffic stays on one origin; this address is server-side only.
++    const backend = (process.env.HRM_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
+     return [
+       {
+         source: '/api/:path*',
+-        destination: 'http://localhost:8000/api/:path*',
++        destination: `${backend}/api/:path*`,
+       },
++      { source: '/sanctum/csrf-cookie', destination: `${backend}/sanctum/csrf-cookie` },
++      { source: '/auth/doxa', destination: `${backend}/auth/doxa` },
++      { source: '/auth/doxa/callback', destination: `${backend}/auth/doxa/callback` },
++      { source: '/auth/doxa/:path*', destination: `${backend}/auth/doxa/:path*` },
+     ]
+   },
+ }
+diff --git a/frontend/services/api.ts b/frontend/services/api.ts
+index 87e5e43..940ffb3 100644
+--- a/frontend/services/api.ts
++++ b/frontend/services/api.ts
+@@ -2,20 +2,31 @@ import axios from "axios";
+ import { clearLocalAuth } from "./auth-storage";
+ 
+ const api = axios.create({
+-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
++  // Same-origin Next rewrites keep the Laravel session/CSRF cookies host-only.
++  baseURL: "",
+   headers: {
+     "Content-Type": "application/json",
+     Accept: "application/json",
+   },
+-  withCredentials: false, // Set to false to avoid CORS issues
++  withCredentials: true,
++  // Axios's default adds X-XSRF-TOKEN only for same-origin requests.
+ });
+ 
+ // Add token to requests
+-api.interceptors.request.use((config) => {
+-  const token = localStorage.getItem("auth_token");
++api.interceptors.request.use(async (config) => {
++  let token: string | null = null;
++  try { token = localStorage.getItem("auth_token"); } catch { /* Legacy storage is optional for sessions. */ }
+   if (token) {
+     config.headers.Authorization = `Bearer ${token}`;
+   }
++
++  const method = (config.method || "get").toLowerCase();
++  if (!["get", "head", "options"].includes(method)) {
++    const hasCsrfCookie = document.cookie.split(";").some((cookie) => cookie.trim().startsWith("XSRF-TOKEN="));
++    if (!hasCsrfCookie) {
++      await axios.get("/sanctum/csrf-cookie", { withCredentials: true });
++    }
++  }
+   return config;
+ });
+ 
+diff --git a/backend/app/Auth/DoxaApplicationAccess.php b/backend/app/Auth/DoxaApplicationAccess.php
+new file mode 100644
+index 0000000..55d51d4
+--- /dev/null
++++ b/backend/app/Auth/DoxaApplicationAccess.php
+@@ -0,0 +1,36 @@
++<?php
++
++namespace App\Auth;
++
++use Doxa\Laravel\Contracts\Transport;
++use Illuminate\Support\Str;
++
++class DoxaApplicationAccess
++{
++    public function allowed(string $issuer, string $subject): bool
++    {
++        // Existing IAM API resolves public_id, which is the existing OIDC sub.
++        // Never infer access from email or from a previously successful callback.
++        $token = config('hrm.doxa_access_read_token');
++        $application = config('hrm.doxa_application_id');
++        if ($issuer !== config('doxa.issuer') || ! Str::isUuid($subject)
++            || ! Str::isUuid($application) || ! is_string($token) || $token === '') {
++            return false;
++        }
++        try {
++            // SDK transport uses a dedicated TLS client without Laravel HTTP
++            // diagnostic events, redirects, raw exceptions or credential logging.
++            $response = app(Transport::class)->request('GET',
++                rtrim($issuer, '/').'/api/admin/users/'.rawurlencode($subject).'/applications', [
++                    'headers' => ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json'],
++                    'query' => ['application_ids' => [$application], 'per_page' => 1],
++                ]);
++            $records = $response->data()['data'] ?? null;
++            return $response->mediaType === 'application/json' && is_array($records) && count($records) === 1
++                && ($records[0]['id'] ?? null) === $application
++                && ($records[0]['effective_access'] ?? null) === true;
++        } catch (\Throwable) {
++            return false;
++        }
++    }
++}
+diff --git a/backend/app/Auth/DoxaLinkAudit.php b/backend/app/Auth/DoxaLinkAudit.php
+new file mode 100644
+index 0000000..20cb095
+--- /dev/null
++++ b/backend/app/Auth/DoxaLinkAudit.php
+@@ -0,0 +1,31 @@
++<?php
++
++namespace App\Auth;
++
++use App\Models\DoxaLinkTransaction;
++use App\Models\User;
++use Illuminate\Support\Facades\DB;
++
++final class DoxaLinkAudit
++{
++    public function write(string $action, ?DoxaLinkTransaction $transaction, ?User $actor, ?string $failure = null): void
++    {
++        // Existing AuditLog has no writer and is fully guarded. Use its existing
++        // table with an explicit allowlist; never capture requests or exceptions.
++        $identity = $transaction?->identity;
++        DB::table('audit_logs')->insert([
++            'user_id' => $actor && User::whereKey($actor->id)->exists() ? $actor->id : null,
++            'user_name' => $actor?->name,
++            'action' => 'doxa.link.'.$action, 'subject_type' => User::class,
++            'subject_id' => $transaction?->target_user_id,
++            'new_values' => json_encode([
++                'initiating_admin_id' => $transaction?->admin_id,
++                'employee_id' => $transaction?->employee_id,
++                'issuer' => $identity['issuer'] ?? null,
++                'subject' => $identity['subject'] ?? null,
++                'failure_category' => $failure,
++            ], JSON_THROW_ON_ERROR),
++            'created_at' => now(), 'updated_at' => now(),
++        ]);
++    }
++}
+diff --git a/backend/app/Auth/DoxaLinkClient.php b/backend/app/Auth/DoxaLinkClient.php
+new file mode 100644
+index 0000000..ad0ae79
+--- /dev/null
++++ b/backend/app/Auth/DoxaLinkClient.php
+@@ -0,0 +1,27 @@
++<?php
++
++namespace App\Auth;
++
++use Doxa\Laravel\Config\DoxaConfig;
++use Doxa\Laravel\DoxaClient;
++use Doxa\Laravel\Transaction\CacheTransactionStore;
++use Doxa\Laravel\Contracts\Transport;
++use Doxa\Laravel\Oidc\IdTokenValidator;
++use Doxa\Laravel\Oidc\JwksProvider;
++use Doxa\Laravel\Token\CodeExchange;
++
++final class DoxaLinkClient
++{
++    public function client(): DoxaClient
++    {
++        // Separate registered callback; SDK still owns every protocol operation.
++        $config = new DoxaConfig([...config('doxa'), 'redirect_uri' => config('hrm.doxa_link_redirect_uri')]);
++        $store = new CacheTransactionStore(app('cache')->store(config('doxa.cache_store')), app('encrypter'), $config);
++
++        return app()->makeWith(DoxaClient::class, [
++            'config' => $config, 'transactions' => $store,
++            'exchange' => new CodeExchange($config, app(Transport::class), $store),
++            'validator' => new IdTokenValidator(app(JwksProvider::class), $store),
++        ]);
++    }
++}
+diff --git a/backend/app/Auth/DoxaLinkFailure.php b/backend/app/Auth/DoxaLinkFailure.php
+new file mode 100644
+index 0000000..9745646
+--- /dev/null
++++ b/backend/app/Auth/DoxaLinkFailure.php
+@@ -0,0 +1,11 @@
++<?php
++
++namespace App\Auth;
++
++final class DoxaLinkFailure extends \RuntimeException
++{
++    public function __construct(public readonly string $category)
++    {
++        parent::__construct($category);
++    }
++}
+diff --git a/backend/app/Auth/LinkedDoxaUserResolver.php b/backend/app/Auth/LinkedDoxaUserResolver.php
+new file mode 100644
+index 0000000..39383fe
+--- /dev/null
++++ b/backend/app/Auth/LinkedDoxaUserResolver.php
+@@ -0,0 +1,37 @@
++<?php
++
++namespace App\Auth;
++
++use App\Models\ExternalIdentity;
++use App\Models\User;
++use Doxa\Laravel\Identity\DoxaIdentity;
++
++final class LinkedDoxaUserResolver
++{
++    public function resolve(#[\SensitiveParameter] DoxaIdentity $identity): ?User
++    {
++        $issuer = $identity->issuer();
++        $subject = $identity->subject();
++
++        // MySQL stores these opaque keys in VARBINARY(255): enforce byte limits.
++        if ($issuer === '' || $subject === '' || strlen($issuer) > 255 || strlen($subject) > 255) {
++            return null;
++        }
++
++        $link = ExternalIdentity::query()
++            ->where('issuer', $issuer)
++            ->where('subject', $subject)
++            ->with('user')
++            ->first();
++
++        // Also fail closed if another database's collation is less exact.
++        if ($link === null || ! hash_equals($issuer, $link->issuer) || ! hash_equals($subject, $link->subject)) {
++            return null;
++        }
++
++        $user = $link->user;
++
++        // This application's User model does not apply a SoftDeletes scope.
++        return $user !== null && $user->is_active && $user->deleted_at === null ? $user : null;
++    }
++}
+diff --git a/backend/app/Http/Controllers/DoxaLinkController.php b/backend/app/Http/Controllers/DoxaLinkController.php
+new file mode 100644
+index 0000000..5ac63d5
+--- /dev/null
++++ b/backend/app/Http/Controllers/DoxaLinkController.php
+@@ -0,0 +1,260 @@
++<?php
++
++namespace App\Http\Controllers;
++
++use App\Auth\DoxaApplicationAccess;
++use App\Auth\DoxaLinkAudit;
++use App\Auth\DoxaLinkClient;
++use App\Auth\DoxaLinkFailure;
++use App\Models\DoxaLinkTransaction;
++use App\Models\Employee;
++use App\Models\ExternalIdentity;
++use App\Models\User;
++use Doxa\Laravel\Authorization\AuthorizationOptions;
++use Illuminate\Http\Request;
++use Illuminate\Support\Facades\Auth;
++use Illuminate\Support\Facades\DB;
++
++final class DoxaLinkController extends Controller
++{
++    public function __construct(private DoxaLinkClient $oidc, private DoxaApplicationAccess $access, private DoxaLinkAudit $audit) {}
++
++    private function admin(): User
++    {
++        $admin = Auth::guard('web')->user();
++        if (! $admin || ! $admin->isHrAdmin() || ! $admin->is_active || $admin->deleted_at !== null) {
++            throw new DoxaLinkFailure('admin_unauthorized');
++        }
++        return $admin;
++    }
++
++    private function binding(Request $request): string
++    {
++        return hash('sha256', $request->session()->getId());
++    }
++
++    private function transaction(Request $request, string $id, string $status): DoxaLinkTransaction
++    {
++        $admin = $this->admin();
++        $transaction = DoxaLinkTransaction::query()->lockForUpdate()->find($id);
++        if (! $transaction || $transaction->admin_id !== $admin->id
++            || ! hash_equals($transaction->session_binding, $this->binding($request))) {
++            throw new DoxaLinkFailure('transaction_binding');
++        }
++        if ($transaction->expires_at->isPast()) {
++            throw new DoxaLinkFailure('transaction_expired');
++        }
++        if ($transaction->status !== $status || $transaction->consumed_at !== null) {
++            throw new DoxaLinkFailure('transaction_replay');
++        }
++        return $transaction;
++    }
++
++    private function target(DoxaLinkTransaction $transaction): User
++    {
++        $employee = Employee::query()->lockForUpdate()->find($transaction->employee_id);
++        $user = User::query()->lockForUpdate()->find($transaction->target_user_id);
++        if (! $employee || ! $user || $employee->user_id !== $user->id || $user->deleted_at !== null) {
++            throw new DoxaLinkFailure('target_invalid');
++        }
++        if (! $user->is_active) {
++            throw new DoxaLinkFailure('target_inactive');
++        }
++        return $user;
++    }
++
++    private function eligible(DoxaLinkTransaction $transaction, User $user): ?ExternalIdentity
++    {
++        $identity = $transaction->identity;
++        $issuer = $identity['issuer'] ?? null;
++        $subject = $identity['subject'] ?? null;
++        if (! is_string($issuer) || $issuer === '' || $issuer !== config('doxa.issuer') || strlen($issuer) > 255
++            || ! is_string($subject) || $subject === '' || strlen($subject) > 255) {
++            throw new DoxaLinkFailure('identity_invalid');
++        }
++        if (! $this->access->allowed($issuer, $subject)) {
++            throw new DoxaLinkFailure('application_access_denied');
++        }
++        if ($transaction->expires_at->isPast()) {
++            throw new DoxaLinkFailure('transaction_expired');
++        }
++        $link = ExternalIdentity::query()->where('issuer', $issuer)->where('subject', $subject)->lockForUpdate()->first();
++        if ($link && (! hash_equals($issuer, $link->issuer) || ! hash_equals($subject, $link->subject) || $link->user_id !== $user->id)) {
++            throw new DoxaLinkFailure('identity_conflict');
++        }
++        if ($user->externalIdentities()->where('issuer', $issuer)->when($link, fn ($query) => $query->where('id', '!=', $link->id))->exists()) {
++            throw new DoxaLinkFailure('target_already_linked');
++        }
++        return $link;
++    }
++
++    private function cleanInput(Request $request): void
++    {
++        // Mutations accept CSRF only. Reject even seemingly harmless identity,
++        // target or destination fields, rather than accidentally using them later.
++        if (array_diff(array_keys($request->all()), ['_token']) !== []) {
++            throw new DoxaLinkFailure('unexpected_input');
++        }
++    }
++
++    private function fail(Request $request, ?DoxaLinkTransaction $transaction, \Throwable $exception)
++    {
++        if (! $transaction && is_string($request->route('id'))) {
++            $candidate = DoxaLinkTransaction::find($request->route('id'));
++            if ($candidate && $candidate->admin_id === Auth::guard('web')->id()
++                && hash_equals($candidate->session_binding, $this->binding($request))) $transaction = $candidate;
++        }
++        $category = $exception instanceof DoxaLinkFailure ? $exception->category : 'link_unavailable';
++        if ($exception instanceof \Doxa\Laravel\Exceptions\DoxaException) $category = 'oidc_validation_failed';
++        if ($exception instanceof \Illuminate\Database\QueryException && (string) $exception->getCode() === '23000') $category = 'identity_conflict';
++        // A mismatched browser cannot consume another browser's transaction.
++        $owned = $transaction && $transaction->admin_id === Auth::guard('web')->id()
++            && hash_equals($transaction->session_binding, $this->binding($request));
++        DB::transaction(function () use ($transaction, $owned, $category) {
++            if ($owned) {
++                DoxaLinkTransaction::whereKey($transaction->id)->whereIn('status', ['pending', 'verified'])
++                    ->update(['status' => 'failed', 'consumed_at' => now()]);
++            }
++            $this->audit->write('failed', $transaction, Auth::guard('web')->user(), $category);
++        }, 3);
++        return response()->json(['error' => $category], $category === 'admin_unauthorized' ? 403 : 409);
++    }
++
++    public function initiate(Request $request, string $employee)
++    {
++        $transaction = null;
++        try {
++            $admin = $this->admin();
++            $this->cleanInput($request);
++            $transaction = DB::transaction(function () use ($request, $employee, $admin, &$transaction) {
++                $record = Employee::query()->lockForUpdate()->find($employee);
++                if (! $record || ! $record->user_id) {
++                    throw new DoxaLinkFailure('target_invalid');
++                }
++                $transaction = new DoxaLinkTransaction;
++                $transaction->forceFill([
++                    'id' => bin2hex(random_bytes(32)), 'employee_id' => $record->id,
++                    'target_user_id' => $record->user_id, 'admin_id' => $admin->id,
++                    'session_binding' => $this->binding($request), 'expires_at' => now()->addMinutes(5), 'status' => 'pending',
++                ]);
++                $user = $this->target($transaction);
++                if ($user->externalIdentities()->where('issuer', config('doxa.issuer'))->exists()) {
++                    throw new DoxaLinkFailure('target_already_linked');
++                }
++                $transaction->save();
++                $this->audit->write('initiated', $transaction, $admin);
++                return $transaction;
++            });
++            $redirect = $this->oidc->client()->beginLogin(AuthorizationOptions::reauthenticate());
++            parse_str(parse_url($redirect->getTargetUrl(), PHP_URL_QUERY), $parameters);
++            $transaction->oauth_state_hash = hash('sha256', $parameters['state']);
++            $transaction->save();
++            return $request->expectsJson()
++                ? response()->json(['authorization_url' => $redirect->getTargetUrl()]) : $redirect;
++        } catch (\Throwable $exception) {
++            return $this->fail($request, $transaction, $exception);
++        }
++    }
++
++    public function callback(#[\SensitiveParameter] Request $request)
++    {
++        $transaction = null;
++        try {
++            // Always validate via SDK first. Only its verified identity is retained.
++            $state = $request->query('state');
++            $stateHash = is_string($state) ? hash('sha256', $state) : null;
++            $identity = $this->oidc->client()->handleCallback($request);
++            $transaction = $stateHash ? DoxaLinkTransaction::where('oauth_state_hash', $stateHash)->first() : null;
++            if (! $transaction) {
++                throw new DoxaLinkFailure('transaction_binding');
++            }
++            DB::transaction(function () use ($request, &$transaction, $identity) {
++                $transaction = $this->transaction($request, $transaction->id, 'pending');
++                $user = $this->target($transaction);
++                $transaction->identity = ['issuer' => $identity->issuer(), 'subject' => $identity->subject(), 'name' => $identity->name(), 'email' => $identity->email()];
++                $this->eligible($transaction, $user);
++                $transaction->status = 'verified';
++                $transaction->save();
++            });
++            return redirect('/employees/doxa-link/'.$transaction->id);
++        } catch (\Throwable $exception) {
++            // Find only a matching, owned transaction for safe failure audit.
++            if (! $transaction && isset($stateHash)) {
++                $transaction = DoxaLinkTransaction::where('oauth_state_hash', $stateHash)->first();
++            }
++            $failure = $this->fail($request, $transaction, $exception);
++            return $request->expectsJson() ? $failure : redirect('/employees/doxa-link/error');
++        }
++    }
++
++    public function show(Request $request, string $id)
++    {
++        $transaction = null;
++        try {
++            return DB::transaction(function () use ($request, $id, &$transaction) {
++                $transaction = $this->transaction($request, $id, 'verified');
++                $this->target($transaction);
++                $employee = Employee::findOrFail($transaction->employee_id);
++                return response()->json(['employee_name' => $employee->full_name, 'identity' => $transaction->identity]);
++            });
++        } catch (\Throwable $exception) {
++            return $this->fail($request, $transaction, $exception);
++        }
++    }
++
++    public function confirm(Request $request, string $id)
++    {
++        $transaction = null;
++        try {
++            return DB::transaction(function () use ($request, $id, &$transaction) {
++                $transaction = $this->transaction($request, $id, 'verified');
++                $this->cleanInput($request);
++                // Durable compare-and-set also protects SQLite and competing workers.
++                if (DoxaLinkTransaction::whereKey($id)->where('status', 'verified')->update(['status' => 'processing']) !== 1) {
++                    throw new DoxaLinkFailure('transaction_replay');
++                }
++                $admin = User::query()->lockForUpdate()->find($transaction->admin_id);
++                if (! $admin || ! $admin->isHrAdmin() || ! $admin->is_active || $admin->deleted_at !== null) {
++                    throw new DoxaLinkFailure('admin_unauthorized');
++                }
++                $user = $this->target($transaction);
++                $link = $this->eligible($transaction, $user);
++                if (! $link) {
++                    $user->externalIdentities()->create([
++                        'issuer' => $transaction->identity['issuer'], 'subject' => $transaction->identity['subject'],
++                    ]);
++                }
++                $transaction->status = 'completed';
++                $transaction->consumed_at = now();
++                $transaction->save();
++                $this->audit->write('succeeded', $transaction, $admin);
++                return response()->json(['destination' => '/employees/'.$transaction->employee_id.'?doxa_link=success']);
++            }, 3);
++        } catch (\Throwable $exception) {
++            return $this->fail($request, $transaction, $exception);
++        }
++    }
++
++    public function cancel(Request $request, string $id)
++    {
++        $transaction = null;
++        try {
++            $this->cleanInput($request);
++            return DB::transaction(function () use ($request, $id, &$transaction) {
++                $transaction = DoxaLinkTransaction::find($id);
++                $status = $transaction?->status;
++                if (! in_array($status, ['pending', 'verified'], true)) {
++                    throw new DoxaLinkFailure('transaction_replay');
++                }
++                $transaction = $this->transaction($request, $id, $status);
++                if (DoxaLinkTransaction::whereKey($id)->where('status', $status)->update(['status' => 'cancelled', 'consumed_at' => now()]) !== 1) {
++                    throw new DoxaLinkFailure('transaction_replay');
++                }
++                $this->audit->write('cancelled', $transaction, $this->admin());
++                return response()->json(['destination' => '/employees/'.$transaction->employee_id]);
++            });
++        } catch (\Throwable $exception) {
++            return $this->fail($request, $transaction, $exception);
++        }
++    }
++}
+diff --git a/backend/app/Http/Controllers/DoxaLoginController.php b/backend/app/Http/Controllers/DoxaLoginController.php
+new file mode 100644
+index 0000000..771b377
+--- /dev/null
++++ b/backend/app/Http/Controllers/DoxaLoginController.php
+@@ -0,0 +1,76 @@
++<?php
++
++namespace App\Http\Controllers;
++
++use App\Auth\LinkedDoxaUserResolver;
++use Doxa\Laravel\DoxaClient;
++use Doxa\Laravel\Exceptions\ConfigurationException;
++use Doxa\Laravel\Exceptions\DoxaException;
++use Illuminate\Http\RedirectResponse;
++use Illuminate\Http\Request;
++use Illuminate\Support\Facades\Auth;
++use Throwable;
++
++final class DoxaLoginController extends Controller
++{
++    public function login()
++    {
++        try {
++            // Resolve inside the safe boundary, including configuration failures.
++            return app(DoxaClient::class)->beginLogin();
++        } catch (DoxaException $exception) {
++            // Laravel's routing pipeline renders thrown exceptions before outer
++            // middleware can catch them. Return only the SDK's safe category.
++            return response()->json(['error' => $exception->category], 400);
++        } catch (Throwable) {
++            return response()->json(['error' => 'authentication_unavailable'], 503);
++        }
++    }
++
++    public function callback(#[\SensitiveParameter] Request $request, LinkedDoxaUserResolver $users)
++    {
++        try {
++            // No session rotation or local authentication before SDK validation.
++            $identity = app(DoxaClient::class)->handleCallback($request);
++            $user = $users->resolve($identity);
++
++            if ($user === null) {
++                return response()->json(['error' => 'access_denied'], 403);
++            }
++
++            $destination = $this->dashboardDestination();
++            // SessionGuard::login destroys/migrates the old ID after validation.
++            Auth::guard('web')->login($user, false);
++            $request->session()->regenerateToken();
++
++            // Keep /dashboard relative to the public browser origin even when
++            // a trusted proxy forwards to an internal backend host.
++            return new RedirectResponse($destination);
++        } catch (DoxaException $exception) {
++            return response()->json(['error' => $exception->category], 400);
++        } catch (Throwable) {
++            // Never report raw callback/provider/SQL exceptions to the browser.
++            return response()->json(['error' => 'authentication_unavailable'], 503);
++        }
++    }
++
++    private function dashboardDestination(): string
++    {
++        $frontend = config('hrm.frontend_url');
++        if ($frontend === null || $frontend === '') {
++            return '/dashboard';
++        }
++
++        $parts = is_string($frontend) ? parse_url($frontend) : false;
++        if ($parts === false || ! filter_var($frontend, FILTER_VALIDATE_URL)
++            || ($parts['scheme'] ?? null) !== 'https' || empty($parts['host'])
++            || isset($parts['user']) || isset($parts['pass'])
++            || isset($parts['query']) || isset($parts['fragment'])
++            || ! in_array($parts['path'] ?? '', ['', '/'], true)) {
++            throw new ConfigurationException('configuration_error');
++        }
++
++        // Only server configuration supplies this origin. No return_to/intended URL.
++        return rtrim($frontend, '/').'/dashboard';
++    }
++}
+diff --git a/backend/app/Models/DoxaLinkTransaction.php b/backend/app/Models/DoxaLinkTransaction.php
+new file mode 100644
+index 0000000..a45fcf2
+--- /dev/null
++++ b/backend/app/Models/DoxaLinkTransaction.php
+@@ -0,0 +1,15 @@
++<?php
++
++namespace App\Models;
++
++use Illuminate\Database\Eloquent\Model;
++
++final class DoxaLinkTransaction extends Model
++{
++    public $incrementing = false;
++    protected $keyType = 'string';
++    protected $guarded = ['*'];
++    protected $hidden = ['session_binding', 'oauth_state_hash', 'identity'];
++    protected $casts = ['employee_id' => 'integer', 'target_user_id' => 'integer', 'admin_id' => 'integer',
++        'identity' => 'encrypted:array', 'expires_at' => 'datetime', 'consumed_at' => 'datetime'];
++}
+diff --git a/backend/config/debugbar.php b/backend/config/debugbar.php
+new file mode 100644
+index 0000000..474a9aa
+--- /dev/null
++++ b/backend/config/debugbar.php
+@@ -0,0 +1,6 @@
++<?php
++
++return [
++    // Keep the package's existing exclusions and never record OAuth requests.
++    'except' => ['telescope*', 'horizon*', '_boost/browser-logs', 'auth/doxa*'],
++];
+diff --git a/backend/config/doxa.php b/backend/config/doxa.php
+new file mode 100644
+index 0000000..ecdd3ca
+--- /dev/null
++++ b/backend/config/doxa.php
+@@ -0,0 +1,16 @@
++<?php
++
++return [
++    'issuer' => env('DOXA_ISSUER'),
++    'client_id' => env('DOXA_CLIENT_ID'),
++    'client_secret' => env('DOXA_CLIENT_SECRET') === '' ? null : env('DOXA_CLIENT_SECRET'),
++    'redirect_uri' => env('DOXA_REDIRECT_URI'),
++    'scopes' => ['openid'],
++    'pkce_required' => true,
++    'timeout' => 10,
++    'discovery_cache_ttl' => 300,
++    'jwks_cache_ttl' => 300,
++    'client_auth_method' => null,
++    'cache_store' => env('DOXA_CACHE_STORE') === '' ? null : env('DOXA_CACHE_STORE'),
++    'userinfo_enabled' => false,
++];
+diff --git a/backend/config/hrm.php b/backend/config/hrm.php
+new file mode 100644
+index 0000000..740b393
+--- /dev/null
++++ b/backend/config/hrm.php
+@@ -0,0 +1,9 @@
++<?php
++
++return [
++    // Omit for a frontend/backend served through the same public origin.
++    'frontend_url' => env('HRM_FRONTEND_URL'),
++    'doxa_link_redirect_uri' => env('DOXA_LINK_REDIRECT_URI'),
++    'doxa_application_id' => env('DOXA_HRM_APPLICATION_ID'),
++    'doxa_access_read_token' => env('DOXA_ACCESS_READ_TOKEN'),
++];
+diff --git a/backend/database/migrations/2026_10_08_000000_create_doxa_link_transactions_table.php b/backend/database/migrations/2026_10_08_000000_create_doxa_link_transactions_table.php
+new file mode 100644
+index 0000000..bc29fea
+--- /dev/null
++++ b/backend/database/migrations/2026_10_08_000000_create_doxa_link_transactions_table.php
+@@ -0,0 +1,30 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration {
++    public function up(): void
++    {
++        Schema::create('doxa_link_transactions', function (Blueprint $table) {
++            $table->string('id', 64)->primary();
++            // Retain identifiers for audit even if a local record is deleted.
++            $table->unsignedBigInteger('employee_id');
++            $table->unsignedBigInteger('target_user_id');
++            $table->unsignedBigInteger('admin_id');
++            $table->string('session_binding', 64);
++            $table->string('oauth_state_hash', 64)->nullable()->unique();
++            $table->string('status')->default('pending');
++            $table->text('identity')->nullable();
++            $table->timestamp('expires_at');
++            $table->timestamp('consumed_at')->nullable();
++            $table->timestamps();
++        });
++    }
++
++    public function down(): void
++    {
++        Schema::dropIfExists('doxa_link_transactions');
++    }
++};
+diff --git a/backend/docs/browser-session-preparation.md b/backend/docs/browser-session-preparation.md
+new file mode 100644
+index 0000000..6cb5663
+--- /dev/null
++++ b/backend/docs/browser-session-preparation.md
+@@ -0,0 +1,64 @@
++# HRM browser/session prerequisite checkpoint
++
++This document records the earlier preparation checkpoint. Its deferred API CSRF gap is now addressed by the credential boundary described in [csrf-boundary.md](csrf-boundary.md). Cookie-bearing stateful API mutations require CSRF; cookieless bearer/public requests retain their existing behavior. The historical inspection below explains why this follow-up was required.
++
++This checkpoint prepares configuration only. No Doxa routes, controllers, authorization calls, callback handling, identity linking, provisioning, or logout integration are implemented. No IAM server is needed for the checks below.
++
++## Inspected local configuration
++
++The actual backend `.env` sets `APP_ENV=local`, `APP_URL=http://localhost:8000`, `SESSION_DRIVER=file`, `SESSION_LIFETIME=120`, and `CACHE_DRIVER=file`. Frontend `.env.local` uses `NEXT_PUBLIC_API_URL=http://localhost:8000`; the frontend origin allowed by the backend is `http://localhost:3000`.
++
++The session cookie is `doxa_hrms_session`, derived from the local `APP_NAME`. Its path is `/`, domain is null (host-only), HttpOnly is true, SameSite is `lax`, and partitioning is disabled. Local Secure is false after this preparation; previously it was unset/null. Idle lifetime is 120 minutes and expire-on-close is false. Session payload encryption at rest is false; the session-ID cookie is encrypted by Laravel's `EncryptCookies`, which has no exemptions. These are different encryption settings. Do not expose session files through the web server.
++
++Sessions use `backend/storage/framework/sessions`; cache and file locks use `backend/storage/framework/cache/data`. Both directories exist. File sessions and FileStore are supported prerequisites for a single host. FileStore provides persistent atomic `add`, which the SDK requires for transaction/replay claims. The SDK encrypts transaction payloads before caching them. Never use cookie sessions or array/null cache for the future flow; array sessions are only suitable for tests.
++
++PDO MySQL, PostgreSQL, SQLite, and the PHP Redis extension are installed. The default database connection is MySQL, and Redis connections are configured. Connectivity to either server has not been established by this checkpoint. No session/cache table migrations exist in this project, so database session/cache drivers are not ready merely because connection definitions exist. No infrastructure or migrations were added. Multiple application hosts require a supported shared session store and shared atomic transaction cache; isolated per-host files are insufficient.
++
++## Environment contract
++
++The committed `.env.example` describes HTTP local development, not a production-safe deployment. The existing private `.env` is unchanged.
++
++For deployment, supply these values through the deployment environment:
++
++- `APP_ENV=production`, `APP_DEBUG=false`, and `APP_URL` set to the backend's externally reachable HTTPS URL. `APP_URL` does not itself enable TLS or Secure cookies.
++- `SESSION_SECURE_COOKIE=true`. Source configuration defaults to true when `APP_ENV=production`, but an explicit false overrides it: do not carry the local example's false into deployment. Other HTTPS environments, including staging and future local OIDC testing, also need true.
++- `SESSION_SAME_SITE=lax` for the expected top-level GET callback. Strict is not suitable for the SDK. None requires Secure/HTTPS and a justified cross-site browser topology; do not select it automatically. Cross-site POST callbacks do not have the same Lax-cookie behavior and are not prepared here.
++- Leave `SESSION_DOMAIN=null` unless a reviewed browser topology actually requires sharing across application subdomains. Never scope the HRM cookie to the IAM domain or a broad parent domain merely for redirects. Preserve a stable backend host, cookie name, path, domain, and application key throughout a transaction. Cookies are not isolated by port: avoid sibling local applications using the same cookie name on the same host.
++- Set `SANCTUM_STATEFUL_DOMAINS` explicitly to the trusted application frontend/backend hosts with ports where applicable, without schemes. Set `CORS_ALLOWED_ORIGINS` to the exact trusted frontend origins including schemes and ports. Do not add IAM to these lists for top-level redirects. The existing CORS configuration supports credentials and filters out the literal wildcard origin; allowed origin patterns are empty.
++- Keep persistent server-side session/cache drivers. Protect storage permissions and persist the application key securely. If using multiple hosts, provision and verify shared storage before enabling login.
++
++Apply deployment configuration using the usual configuration-cache rebuild. There is no configuration cache currently in the inspected local checkout. `TrustProxies` has no explicitly trusted proxies; a deployment behind TLS termination needs an infrastructure-specific trusted-proxy review so HTTPS/request URL detection is correct. No proxy trust was broadened here.
++
++The installed SDK's provider refuses to resolve its browser context unless Secure is exactly true, HttpOnly is true, SameSite is lax/none, and the session driver is not cookie. Therefore the current HTTP development setup can exercise existing HRM behavior but cannot run the future SDK browser flow as configured. Use HTTPS with Secure cookies for that work; do not bypass the SDK checks.
++
++## CSRF and API impact: behavioral change deferred
++
++The `web` group includes encrypted/queued cookies, `StartSession`, and the application's `VerifyCsrfToken`. `routes/web.php` currently contains only the welcome route. The `api` group includes Sanctum's `EnsureFrontendRequestsAreStateful`, API throttling, and route bindings. Stateful requests receive cookie/session/CSRF middleware; `auth:sanctum` checks the web guard before bearer tokens.
++
++However, `App\Http\Middleware\VerifyCsrfToken::$except` contains `api/*`. All API mutations therefore bypass CSRF verification even when authenticated using a browser cookie. This is an existing gap, independent of OIDC; CORS and SameSite are not substitutes for CSRF validation. The exemption is unchanged because removing it changes existing API/client behavior and exceeds this configuration-only checkpoint.
++
++Before enabling browser session authentication, replace the blanket exemption with a reviewed, narrowly scoped policy. Cookie-authenticated logout, password/profile updates, and all POST/PUT/PATCH/DELETE business mutations need CSRF protection. Login/registration need login-CSRF consideration when establishing a browser session; review the public application-submission endpoint separately. Bearer-only external clients must remain usable without a browser CSRF cookie, while requests carrying ambient session authentication must not bypass verification simply because they also include an Authorization header.
++
++Coordinate frontend/client changes first: initialize CSRF via `/sanctum/csrf-cookie`, send credentials and the corresponding X-XSRF-TOKEN header for stateful mutations, and verify actual behavior with middleware active (Laravel's normal unit-test environment bypasses CSRF checks). The current frontend API client has `withCredentials: false` and stores the existing Sanctum bearer token in localStorage; it is not prepared for cookie-session API mutations. Neither frontend code nor the exemption was changed. No OAuth tokens or new browser token storage were introduced.
++
++Do not exempt future web routes wholesale. When callback handling is separately authorized, review its method and SDK state/session validation explicitly; no callback route or CSRF exception is added here.
++
++## Session identity stability
++
++Ordinary `StartSession` starts/resumes and saves the same valid session ID; no custom middleware/provider was found rotating it on every request. The SDK hashes that ID for its transaction binding. A callback must return with the same cookie/session that began the transaction.
++
++Current password login calls `Auth::attempt` in `AuthController::login`. With the default web SessionGuard, successful login invokes `SessionGuard::login` -> `updateSession` -> `session->migrate(true)`, destroying the previous session and generating a new ID. The controller does not separately call `regenerate()` or regenerate the CSRF token there. Logout calls `Auth::guard('web')->logout`, then `session->invalidate()` and `regenerateToken()` when a request session exists; invalidate flushes data and migrates/destroys the ID. Registration creates a bearer token and does not call web-guard login. No authentication behavior was changed.
++
++Password login or logout in another tab during a future OAuth round trip can invalidate its browser binding. That must fail safely and require a fresh attempt. Future integration must not rotate the ID between transaction creation and validation; any post-authentication rotation belongs after successful callback validation, in a separately approved implementation.
++
++## Remaining implementation gates
++
++Review and implement the browser-CSRF/client policy before enabling session-authenticated API mutations. Establish the HTTPS browser topology and verify Secure/HttpOnly/Lax cookies, the same host/session across the redirect, trusted proxy handling, and persistent storage in the target deployment. Confirm any shared-store availability/atomicity for multiple hosts. OIDC client configuration and IAM registration belong to the subsequent implementation task, not this preparation.
++
++This checkpoint adds no browser-readable OAuth tokens, JavaScript-readable session cookies, localStorage authentication, broader origins, secrets, production domains, session-ID changes, or new CSRF exemptions. Existing localStorage Sanctum authentication and the API CSRF gap remain explicitly recorded limitations. Full SDK security coverage remains the independent Laravel 10–12 matrix; the previously passing HRM subset is not full coverage.
++
++## Checkpoint validation
++
++`composer validate --strict` passed without warnings. The unchanged HRM PHPUnit suite passed 22 tests / 187 assertions with no failures, errors, or skips. Direct checks against the local configuration confirmed file-session persistence and a stable ID after reopening the session, file-cache persistence and rejection of a duplicate `add` from a separate store instance, and HttpOnly/Lax/host-only cookie flags on the existing welcome route. Production defaults and explicit Secure/SameSite environment overrides passed in-memory checks; the private `.env` was not changed.
++
++A direct CSRF middleware check outside Laravel's testing environment rejected a web mutation without a token and accepted a valid token. It also confirmed that the existing `api/*` exemption accepts a tokenless mutation at the CSRF layer. These checks invoked no API controllers and added no routes or fake OIDC tests. Temporary session/cache entries were removed. `git diff --check` passed. No deployment, IAM, Redis/database connectivity, real browser redirect, or multi-process concurrency claim is made by these checks.
+diff --git a/backend/docs/csrf-boundary.md b/backend/docs/csrf-boundary.md
+new file mode 100644
+index 0000000..e8ca65f
+--- /dev/null
++++ b/backend/docs/csrf-boundary.md
+@@ -0,0 +1,61 @@
++# HRM CSRF credential boundary
++
++## Route map inspected before implementation
++
++The actual route collection and `routes/api.php` were inspected, with the existing Sanctum 3.3.3 guard/middleware source. All HRM API routes use the `api` group: Sanctum stateful-request middleware, throttling, and bindings. No HRM route uses plain `auth`; protected routes use `auth:sanctum` plus `EnsureActiveUser`. Sanctum tries the web session guard before bearer authentication. The business group additionally requires `role:hr_admin`.
++
++| Routes (all API paths below start with `/api`) | Methods | Authentication |
++| --- | --- | --- |
++| `/` | GET/HEAD | Public web welcome, with session and CSRF middleware |
++| `/sanctum/csrf-cookie` | GET/HEAD | Public web CSRF/session bootstrap |
++| `/auth/login`, `/auth/register` | POST | Public password login / registration, returning existing Sanctum bearer tokens |
++| `/jobs`, `/jobs/{id}` | GET/HEAD | Public |
++| `/applications` | POST | Public careers application submission |
++| `/auth/me` | GET/HEAD | Sanctum session or bearer, active user |
++| `/auth/logout` | POST | Sanctum session or bearer, active user |
++| `/auth/password`, `/auth/profile` | PUT | Sanctum session or bearer, active user |
++| `/dashboard/{metrics,activities,notifications,recent-employees,analytics}` | GET/HEAD | Sanctum session or bearer, active HR admin |
++| `/employees` | GET/HEAD, POST | Sanctum session or bearer, active HR admin |
++| `/employees/{id}` | GET/HEAD, PUT | Sanctum session or bearer, active HR admin |
++| `/job-postings` | GET/HEAD, POST | Sanctum session or bearer, active HR admin |
++| `/job-postings/{id}` | PUT, DELETE | Sanctum session or bearer, active HR admin |
++| `/applications`, `/applications/{id}` | GET/HEAD | Sanctum session or bearer, active HR admin |
++| `/applications/{id}` | PUT | Sanctum session or bearer, active HR admin |
++| `/interviews` | GET/HEAD, POST | Sanctum session or bearer, active HR admin |
++| `/interviews/{id}` | GET/HEAD | Sanctum session or bearer, active HR admin |
++| `/attendance` | GET/HEAD, POST | Sanctum session or bearer, active HR admin |
++| `/attendance/bulk` | POST | Sanctum session or bearer, active HR admin |
++| `/payroll`, `/payroll/periods` | GET/HEAD | Sanctum session or bearer, active HR admin |
++| `/payroll/process`, `/payroll/draft` | POST | Sanctum session or bearer, active HR admin |
++| `/payroll/items/{id}` | PUT | Sanctum session or bearer, active HR admin |
++| `/settings/payroll` | GET/HEAD, PUT | Sanctum session or bearer, active HR admin |
++| `/performance` | GET/HEAD, POST | Sanctum session or bearer, active HR admin |
++| `/performance/{id}` | PUT, DELETE | Sanctum session or bearer, active HR admin |
++
++There are no password-reset, PATCH, Doxa login, or OIDC callback routes. Telescope's pre-existing package routes use its separate middleware group and are outside the HRM `api/*` exemption; they were not modified. Frontend services contain calls to DELETE `/api/employees/{id}` and PATCH `/api/applications/{id}/stage` that do not exist in the current backend route map. This checkpoint does not repair those unrelated mismatches.
++
++Every protected unsafe method above can mutate using a browser session when Sanctum recognizes the frontend Origin/Referer and starts/resumes that session. No protected HRM endpoint is declared bearer-only: bearer tokens are a second supported credential mechanism on those same routes. Public routes remain unauthenticated; cookie-bearing public mutations still need CSRF, particularly login which can replace session authentication.
++
++## Smallest boundary
++
++Keep `api/*` in the application CSRF exemption list for compatibility, but override exemption matching for API requests with an attached session and either a decrypted Laravel session cookie or an authenticated web guard. Such requests receive Laravel's unchanged token comparison, encrypted X-XSRF-TOKEN decoding, and 419 rejection behavior. This includes anonymous cookie-bearing sessions, mixed session/bearer credentials, and future unsafe HTTP methods. No route-specific CSRF bypass is added. Web routes retain standard CSRF behavior.
++
++Sanctum's existing stateful pipeline decrypts cookies and starts the session before invoking this middleware. Requests without a recognized stateful Origin/Referer do not get that session pipeline; cookies alone do not authenticate those API requests. Requests with no browser session credentials retain the existing API exemption, even if they have a trusted frontend Origin. A newly started empty session without an incoming session cookie is not itself an existing browser credential. This preserves the current cross-origin bearer frontend and public cookieless clients.
++
++An Authorization header never decides the exemption. A valid bearer token accompanying an authenticated session does not avoid CSRF or override Sanctum's session-first identity selection. Bearer clients that also send a stateful session cookie must supply its CSRF token; truly bearer-only clients should not carry those cookies. A forged or undecipherable cookie does not supply an authenticated session. Missing/untrusted Origin/Referer does not create session authentication; bearer authentication remains unchanged.
++
++No login/password/logout controller, auth route, role rule, middleware ordering, session settings, CORS settings, SDK usage, or authentication semantics are changed. The only production change is the credential-aware exemption decision in `VerifyCsrfToken`.
++
++## Frontend and deployment
++
++The current API client uses a localStorage Sanctum token, an Authorization header, and `withCredentials: false`, with API `http://localhost:8000` and frontend `http://localhost:3000`. That cookieless cross-origin mode remains supported without CSRF headers. Same-origin browser calls send cookies regardless of `withCredentials: false`; if they carry the Laravel session cookie, they must now send a CSRF token. Previously bootstrapped anonymous session cookies also require CSRF for public mutations.
++
++For the future cookie-session milestone, bootstrap `/sanctum/csrf-cookie`, retain cookies, then send credentials and X-XSRF-TOKEN (the URL-decoded encrypted XSRF cookie value) or a trusted server-provided X-CSRF-TOKEN on mutations. JavaScript may read the CSRF cookie; the authentication session cookie remains HttpOnly. Cross-origin clients need `withCredentials: true` / fetch `credentials: include`, exact allowed CORS origins, and trusted Sanctum hosts with ports. Verify that the client actually sends the XSRF header cross-origin; credentials alone are insufficient. Separate frontend/backend hosts may require an explicitly reviewed CSRF-cookie/token delivery topology; do not broaden the session domain automatically. IAM redirects do not require adding IAM to CORS or Sanctum stateful domains.
++
++Existing CORS allows the explicit frontend origin, supports credentials, has empty origin patterns, and filters literal wildcard origins. Cookie Secure/HttpOnly/SameSite settings remain unchanged by this task. Future SDK browser testing requires HTTPS and Secure cookies, stable session identity, correct proxy handling, and persistent/shared storage where applicable. No OAuth browser storage, OIDC flow, IAM call, or frontend migration is added.
++
++## Focused validation
++
++The new tests use the real existing routes and real file-backed sessions/cookies. Only users/token tables from existing migrations are installed in SQLite memory. The test application environment is set to local so Laravel's usual PHPUnit CSRF bypass is disabled; session Secure=false is limited to these HTTP test requests. Middleware and token checks remain active, and no fake OIDC routes are created.
++
++Results: the original suite passed before the change (22 tests / 187 assertions). The new boundary suite passes 21 tests / 104 assertions, and the complete suite passes 43 tests / 291 assertions, with zero failures, errors, or skips. Coverage includes missing/invalid/foreign/malformed tokens, valid encrypted XSRF headers, real session profile updates and logout, GET `/auth/me`, business POST/PUT/DELETE blocking, mixed valid/invalid bearer headers, anonymous session cookies, non-stateful cookie requests, cookieless bearer mutations/logout, and public login/registration/validation. Composer strict validation and platform checks pass. `git diff --check` passes. No IAM server or SDK/OIDC harness was used.
+diff --git a/backend/docs/doxa-identity-linking.md b/backend/docs/doxa-identity-linking.md
+new file mode 100644
+index 0000000..0dba6af
+--- /dev/null
++++ b/backend/docs/doxa-identity-linking.md
+@@ -0,0 +1,223 @@
++# HRM Doxa identity linking implementation report
++
++Implemented in HRM only. No IAM/SDK files changed. No refresh tokens, provisioning,
++email matching, role mapping, unlinking, or relinking were introduced. Nothing was
++committed or pushed. Existing uncommitted login/session work was preserved.
++
++## 1. Architecture and inspected structure
++
++`Employee` uses SoftDeletes and belongs to `User` through `employees.user_id`.
++`User` is the authenticatable local account, has one employee, and has many
++`ExternalIdentity` records. User has a `deleted_at` column but no SoftDeletes
++scope, so linking explicitly checks it. Employee detail is a Next.js page backed
++by `GET /api/employees/{id}`, already restricted to `hr_admin`.
++
++Ordinary Doxa login remains in `DoxaLoginController` and uses
++`LinkedDoxaUserResolver` for exact issuer/subject lookup. Existing password and
++Sanctum bearer authentication remain unchanged. Linking requires the `web`
++session guard, not a bearer token alone. The web group supplies cookies, session,
++CSRF and route bindings. Linking independently checks the local `hr_admin` role,
++active status and deletion status on every operation.
++
++## 2. Transaction design
++
++New `doxa_link_transactions` table and model:
++
++- Cryptographically random 256-bit ID, encoded as 64 hex characters.
++- Immutable server-selected employee ID, target User ID and initiating admin ID.
++- SHA-256 browser-session binding and unique SHA-256 hash of SDK-generated state.
++- Creation/expiry timestamps; five-minute lifetime including confirmation.
++- Pending, verified, processing, completed, cancelled or failed state; consumed timestamp.
++- Authenticated encryption of allowlisted verified issuer, subject, name and email.
++
++The SDK independently retains its existing OAuth transaction and validates state,
++nonce, PKCE S256, issuer, audience, signature and replay. HRM stores only the SDK
++state hash for correlation, not another OAuth implementation. No tokens, codes,
++secrets, verifier or nonce are saved in the HRM transaction. The SDK removes
++callback query data; HRM captures only the state hash before validation and uses
++it after successful SDK validation. Wrong-session requests cannot consume the
++owner's transaction.
++
++## 3. Routes
++
++| Method | Route | Behavior |
++| --- | --- | --- |
++| POST | `/auth/doxa/employees/{employee}/link` | Authorize admin, resolve employee/user, create transaction, SDK `prompt=login` |
++| GET | `/auth/doxa/link/callback` | Dedicated verified callback, no mapping |
++| GET | `/auth/doxa/link/{id}` | Session-bound allowlisted confirmation data |
++| POST | `/auth/doxa/link/{id}/confirm` | Claim, recheck, map, audit, consume atomically |
++| POST | `/auth/doxa/link/{id}/cancel` | Consume pending/verified request without mapping |
++
++Routes extend the existing `/auth/doxa` web/session convention, use no-store and
++no-referrer SDK middleware, and are throttled. POSTs require CSRF. JSON initiation
++returns the SDK authorization URL for browser navigation; ordinary form requests
++receive the SDK redirect. Next rewrites forward the nested auth routes.
++
++## 4. Resolution and access eligibility
++
++The route employee resolves to `Employee.user_id`. Callback and confirmation
++resolve both original records again, verify the relationship has not changed,
++and reject missing, deleted or inactive local accounts. User IDs, identity keys,
++email and destinations submitted by the browser are rejected on mutations.
++
++The only mapping key is exact `(issuer, subject)`. Profile email never selects a
++local user. Existing binary/exact identity columns and their unique constraint
++remain the authority. The current configured Doxa issuer must match exactly.
++
++The SDK has no application-access recheck interface. Read-only inspection of the
++existing IAM implementation established that OIDC subject is `User.public_id`
++and the existing endpoint is:
++`GET /api/admin/users/{public_id}/applications?application_ids[]=...&per_page=1`.
++HRM's new adapter requires the returned application ID to match exactly and
++`effective_access` to be boolean true. It rechecks at callback and confirmation,
++and fails closed on missing configuration, revocation, malformed data, transport
++failure or an invalid identity. It uses the SDK's dedicated TLS transport, which
++avoids Laravel HTTP diagnostic events, redirects and raw credential exceptions.
++
++## 5. Confirmation
++
++Callback stores the verified identity and redirects to
++`/employees/doxa-link/{opaque-id}`. The page displays local employee name, verified
++profile name/email when available, exact issuer and subject, the requested
++confirmation message, and Confirm link/Cancel. React escapes displayed strings.
++POST bodies contain no identity, target or destination. The page never exposes
++OAuth credentials or session internals. Callback failures redirect browser users
++to a fixed recovery page; JSON clients receive only a safe category.
++
++## 6. Final mapping and conflicts
++
++Confirmation locks the transaction and performs a compare-and-set claim within
++one database transaction. It locks/rechecks admin, employee, target and identity
++rows, reads current IAM eligibility, checks expiry again after the network read,
++and creates the mapping only after all checks. Mapping, success audit and consumed
++state commit together. Deadlock retries remain within the same operation.
++
++- Unlinked identity: create exact mapping.
++- Same identity already on same user: succeed without duplicate.
++- Identity on another user: reject; never move it.
++- Target already has another identity from configured Doxa issuer: reject.
++- Inactive/deleted target or changed Employee/User relationship: reject.
++- Expired, replayed or mismatched transaction: reject.
++- Admin authorization lost or IAM access lost: reject.
++- Concurrent insert: existing database uniqueness prevents duplicate identity ownership.
++
++Cancellation claims pending/verified state, records a cancellation audit and
++consumes the transaction. It never writes ExternalIdentity. Failed owned requests
++become terminal; mismatched browsers cannot cancel/fail the owner's request.
++
++## 7. Audit infrastructure
++
++Existing `audit_logs` migration/model were inspected. The model is fully guarded
++and there was no audit-writing service. The new allowlisted writer uses that
++existing table; no parallel logging system was created.
++
++Events: `doxa.link.initiated`, `doxa.link.succeeded`, `doxa.link.failed`,
++`doxa.link.cancelled`. Records contain actor, target User, original admin,
++employee, verified issuer/subject when available, timestamps and safe failure
++category. Pre-identity failures have null issuer/subject. Request bodies, URLs,
++OAuth state, provider responses and raw exceptions are not audit payloads.
++An audit failure rolls back successful linking rather than committing unaudited
++mapping. Existing OAuth exclusions for Telescope/Debugbar cover nested routes.
++
++## 8. UI
++
++Employee detail returns only configured Doxa issuer's safe identity fields in
++`doxa_identities`. The Doxa Identity section shows Not linked and an active
++admin-only Link Doxa account button, pending navigation/error states, or Linked
++with exact issuer/subject. Success text requires an actual mapping in the fetched
++detail. Confirmation has pending/disabled actions and recovery messages.
++
++## 9. Exact implementation files
++
++Created:
++
++- `backend/app/Auth/DoxaApplicationAccess.php`
++- `backend/app/Auth/DoxaLinkAudit.php`
++- `backend/app/Auth/DoxaLinkClient.php`
++- `backend/app/Auth/DoxaLinkFailure.php`
++- `backend/app/Http/Controllers/DoxaLinkController.php`
++- `backend/app/Models/DoxaLinkTransaction.php`
++- `backend/database/migrations/2026_10_08_000000_create_doxa_link_transactions_table.php`
++- `backend/tests/Feature/DoxaApplicationAccessTest.php`
++- `backend/tests/Feature/DoxaLinkTest.php`
++- `backend/tests/Fixtures/confirm-link-worker.php`
++- `frontend/components/DoxaIdentity.tsx`
++- `frontend/app/(dashboard)/employees/doxa-link/[id]/page.tsx`
++- `frontend/tests/doxa-link.test.cjs`
++- This report and the working-tree diff/stat snapshots.
++
++Extended existing files (including files already untracked before this task):
++
++- `backend/.env.example`
++- `backend/config/hrm.php`
++- `backend/routes/web.php`
++- `backend/app/Http/Controllers/EmployeeController.php`
++- `backend/tests/Fixtures/OidcProviderTransport.php`
++- `frontend/next.config.js`
++- `frontend/app/(dashboard)/employees/[id]/page.tsx`
++
++## 10. Validation
++
++| Check | Result |
++| --- | --- |
++| Complete HRM PHPUnit suite (`php artisan test`) | 100 passed, 734 assertions |
++| Dedicated linking/access tests | 19 passed, 246 assertions |
++| Existing real-SDK OIDC regression tests | Passed in full suite |
++| Two actual concurrent PHP workers, same transaction and different target users | Passed; one 200 and one 409, one mapping |
++| Frontend tests (`node --test tests/*.test.cjs`) | 17 passed |
++| TypeScript (`npx.cmd tsc --noEmit`) | Passed |
++| Production build (`npm.cmd run build`) | Passed, exit 0; Next reported an edge compiler SIGTERM warning before successful compilation |
++| `composer validate --strict` | Passed |
++| `composer check-platform-reqs` | Passed |
++| PHP syntax across application/routes/config/database/tests | Passed, 148 PHP files |
++| `git diff --check` | Passed |
++
++Concurrency tests use a real shared SQLite file and separate processes, not only
++sequential mocks. MySQL-specific deployment concurrency has not been exercised.
++Frontend tests execute component behavior using the existing Node/TypeScript VM
++test approach; they are not real-browser DOM tests.
++
++## 11. Live browser result and deployment prerequisites
++
++**Not performed.** No approved live URLs/test credentials or configured read
++credential were provided. No local listeners were found on the usual HRM/IAM
++ports during inspection, and this session has no browser automation connector or
++installed browser test runner. Simulated provider tests are not claimed as live
++IAM validation. No actual environment or production database migration was run.
++
++Before deployment:
++
++1. Confirm the dedicated HTTPS callback is already registered for the existing
++   HRM OAuth client. This task did not change IAM configuration.
++2. Set `DOXA_LINK_REDIRECT_URI`, `DOXA_HRM_APPLICATION_ID` and server-only
++   `DOXA_ACCESS_READ_TOKEN`; apply the HRM migration through the normal process.
++3. Obtain explicit deployment approval for the IAM read credential. The existing
++   endpoint requires central IAM admin authorization; HRM must not silently gain
++   that credential. A least-privilege service-read capability is not present in
++   the inspected SDK/API and remains an architectural gap for teams unwilling
++   to use the existing authorized endpoint. Linking stays fail closed otherwise.
++4. Preserve HTTPS secure/httpOnly cookies, server-side session/cache, and the
++   existing same-origin frontend proxy configuration.
++5. Run the positive live path with an existing local employee and an unlinked IAM
++   test identity with effective HRM access. Inspect prompt=login, confirmation,
++   exact mapping and audit. Then use an identity linked to another local user and
++   verify rejection without mapping movement or user creation.
++
++## 12. Remaining security policy
++
++Unlink/relink requires a separate policy for authorization, recovery, revocation,
++notification and audit; neither is implemented. Define retention/pruning for
++expired linking records and encrypted profile data. IAM access is checked freshly
++at confirmation, but HRM and IAM cannot share an atomic database commit; a remote
++revocation immediately after the read is a distributed-systems race. Subsequent
++ordinary login remains subject to IAM issuance eligibility and local activity.
++Infrastructure access logs must omit credential-bearing callback queries, as for
++the existing OIDC login flow.
++
++## 13. Full diff/stat
++
++`doxa-link-working-tree.patch` and `doxa-link-working-tree-stat.txt` capture the
++full current tracked diff plus untracked source additions. They include the
++pre-existing uncommitted work listed at task start and this report; snapshot
++files themselves are excluded to avoid recursive growth. This is a working-tree
++snapshot against HEAD, not a claim that all included changes originated here.
+diff --git a/backend/docs/doxa-oidc-login.md b/backend/docs/doxa-oidc-login.md
+new file mode 100644
+index 0000000..bd5e750
+--- /dev/null
++++ b/backend/docs/doxa-oidc-login.md
+@@ -0,0 +1,100 @@
++# Pre-linked Doxa OIDC login
++
++HRM is the relying party. Doxa IAM validates identity and application access;
++HRM owns local users, numeric IDs, roles, permissions, and sessions.
++
++## Routes and policy
++
++- `GET /auth/doxa` calls the installed SDK's `DoxaClient::beginLogin()`.
++- `GET /auth/doxa/callback` passes the real request to `handleCallback()`.
++- Both routes use Laravel's web session and the SDK's no-store/no-referrer middleware.
++- Only `openid` is requested. PKCE is mandatory; UserInfo is disabled.
++- HRM uses the identity's exact issuer and subject to query `ExternalIdentity`.
++  Empty or greater-than-255-byte keys are rejected. No normalization or truncation
++  occurs; a byte-exact comparison also guards against permissive DB collations.
++- Missing links, missing/deleted users, and inactive users are denied with
++  `access_denied`. There is no email/name fallback, provisioning, profile sync,
++  account-linking UI, or IAM role mapping.
++- The browser cannot choose a return destination. Successful login goes to the
++  fixed dashboard. SDK errors expose only their safe categories; unexpected
++  host failures return `authentication_unavailable` without traces or SQL.
++
++The session ID stays stable through SDK callback validation and local eligibility
++checks. Only then does `Auth::guard('web')->login($user, false)` destroy/migrate the
++old session ID; HRM also regenerates its CSRF token. No Sanctum personal token is
++issued and no OAuth token or `DoxaIdentity` is stored in the browser/session/DB.
++Telescope and Debugbar exclude these routes from request diagnostics.
++
++## Protected deployment configuration
++
++Configure backend values in protected environment configuration, then rebuild
++Laravel's config cache after reviewing the values:
++
++- `DOXA_ISSUER`: exact trusted HTTPS issuer advertised by Doxa discovery.
++- `DOXA_CLIENT_ID`: registered OAuth client ID (not the IAM application ID).
++- `DOXA_REDIRECT_URI`: exact registered HTTPS URI ending `/auth/doxa/callback`.
++- `DOXA_CLIENT_SECRET`: secret only for a confidential registration. Empty/absent
++  means public client; the SDK selects the advertised client-authentication method.
++- `DOXA_CACHE_STORE`: optional persistent Laravel cache store; empty uses the
++  default. File cache/session storage works on one server; multiple servers need
++  shared supported transaction cache and shared sessions, with a stable `APP_KEY`.
++- `APP_URL`: public HTTPS HRM URL; configure trusted proxies correctly when TLS
++  terminates before Laravel. `APP_DEBUG=false` in deployment.
++- `SESSION_DRIVER`: server-side; `SESSION_SECURE_COOKIE=true`,
++  `SESSION_SAME_SITE=lax`, `SESSION_DOMAIN=null` for host-only cookies. HttpOnly
++  remains enabled. HTTP development still supports passwords, but cannot run OIDC.
++- `SANCTUM_STATEFUL_DOMAINS`: explicit HRM public host with port where needed.
++  Existing credentialed CORS origins must stay explicit; never use wildcard origins.
++- `HRM_FRONTEND_URL`: optional fixed HTTPS public frontend origin, without
++  query/fragment. By default the redirect is the relative `/dashboard`, preserving
++  the browser's public origin even when Next proxies to an internal backend host.
++
++Use one public HRM origin for frontend, API, CSRF-cookie endpoint, and both OIDC
++routes. The frontend proxies those paths to `HRM_BACKEND_URL`, a server-side Next
++environment value; the existing `NEXT_PUBLIC_API_URL` remains a compatibility
++fallback, followed by the existing local backend default. Configure it before
++building Next and restart after configuration changes. Register the callback on
++the public HRM origin, not an unreachable internal backend host. Serving callback
++and frontend on separate hosts does not transfer host-only session cookies.
++
++The API client now uses same-origin cookies and Axios's XSRF header, bootstrapping
++`/sanctum/csrf-cookie` before a mutation when necessary. Dashboard/login middleware
++checks `/api/auth/me` server-side with incoming cookies and no caching. The existing
++password bearer token remains supported. Starting Doxa login clears only legacy
++frontend credentials; it does not change the Laravel session ID. OIDC credentials
++are never put in localStorage or JavaScript-readable cookies. Local logout still
++uses the existing HRM endpoint; IAM logout/revocation synchronization is not added.
++
++Exclude callback query strings from proxy/access logs and monitoring. Keep IAM
++and HRM cookies separate, and trust only intended proxy addresses. No TLS bypass
++or production domain/secret is built into source.
++
++## Verification and real-account linking
++
++Feature tests use real SDK services and signed RS256 ID tokens; only the provider
++HTTP transport is replaced. They exercise discovery, PKCE, nonce/state, exact
++identity matching, rejected transactions/replays, post-validation session rotation,
++safe failures, local role enforcement, and real CSRF enforcement after OIDC login.
++These are host integration tests, not the SDK's complete security suite. The SDK's
++independent Laravel 10–12 matrix remains the source of full SDK security coverage.
++
++Validation: 81 HRM tests / 488 assertions pass, including 38 new OIDC integration
++cases / 197 assertions and the existing 43 tests / 291 assertions. Frontend's 11
++Node tests, TypeScript checking, production build, Composer strict validation,
++platform requirements, PHP syntax checks, and `git diff --check` also pass.
++The final Next build completed with exit code 0 but emitted a compiler-worker
++SIGTERM diagnostic; no dependency upgrade or unrelated build fix was made.
++
++No real IAM identity was linked or provisioned by this change. Real-browser
++verification is pending configured HTTPS applications, the existing registered
++client/callback, and an approved pre-linked test identity. An administrator must
++identify the intended existing active HRM user by its local ID and independently
++verify the exact IAM issuer/public subject before creating the existing
++`external_identities` relation. Do not infer that link from matching email.
++
++For the live check, record how that approved link was established, visit the HRM
++login page, select Continue with Doxa, authenticate at IAM with HRM application
++access, and confirm return to the local user's dashboard. Verify `/api/auth/me`
++returns that user's local role and a normal Secure/HttpOnly session, then confirm
++a browser mutation requires its CSRF token. Record actual results before claiming
++end-to-end verification. This procedure does not create users or modify IAM.
+diff --git a/backend/tests/Feature/DoxaApplicationAccessTest.php b/backend/tests/Feature/DoxaApplicationAccessTest.php
+new file mode 100644
+index 0000000..a324507
+--- /dev/null
++++ b/backend/tests/Feature/DoxaApplicationAccessTest.php
+@@ -0,0 +1,47 @@
++<?php
++
++namespace Tests\Feature;
++
++use App\Auth\DoxaApplicationAccess;
++use Doxa\Laravel\Contracts\Transport;
++use Doxa\Laravel\Http\JsonResponse;
++use Tests\TestCase;
++
++class DoxaApplicationAccessTest extends TestCase
++{
++    public function test_access_read_uses_verified_exact_subject_and_fails_closed_on_revocation_or_unavailability(): void
++    {
++        $subject = '11111111-1111-4111-8111-111111111111';
++        $application = '22222222-2222-4222-8222-222222222222';
++        config(['doxa.issuer' => 'https://iam.test', 'hrm.doxa_application_id' => $application,
++            'hrm.doxa_access_read_token' => 'PRIVATE-SERVER-READ-TOKEN']);
++        $transport = \Mockery::mock(Transport::class);
++        $transport->shouldReceive('request')->with('GET', 'https://iam.test/api/admin/users/'.$subject.'/applications',
++            \Mockery::on(fn ($options) => $options['query'] === ['application_ids' => [$application], 'per_page' => 1]
++                && $options['headers']['Authorization'] === 'Bearer PRIVATE-SERVER-READ-TOKEN'))
++            ->andReturn(new JsonResponse(['data' => [['id' => $application, 'effective_access' => true]]]),
++                new JsonResponse(['data' => [['id' => $application, 'effective_access' => false]]]),
++                new JsonResponse(['data' => [['id' => 'wrong-application', 'effective_access' => true]]]),
++                new JsonResponse(['data' => []]));
++        $this->app->instance(Transport::class, $transport);
++        $access = new DoxaApplicationAccess;
++        $this->assertTrue($access->allowed('https://iam.test', $subject));
++        $this->assertFalse($access->allowed('https://iam.test', $subject));
++        $this->assertFalse($access->allowed('https://iam.test', $subject));
++        $this->assertFalse($access->allowed('https://iam.test', $subject));
++        $this->assertFalse($access->allowed('https://other.test', $subject));
++        $this->assertFalse($access->allowed('https://iam.test', 'matching@example.test'));
++        config(['hrm.doxa_access_read_token' => null]);
++        $this->assertFalse($access->allowed('https://iam.test', $subject));
++    }
++
++    public function test_transport_failure_is_not_reported_or_treated_as_access(): void
++    {
++        config(['doxa.issuer' => 'https://iam.test', 'hrm.doxa_application_id' => '22222222-2222-4222-8222-222222222222',
++            'hrm.doxa_access_read_token' => 'PRIVATE-READ-TOKEN']);
++        $transport = \Mockery::mock(Transport::class);
++        $transport->shouldReceive('request')->andThrow(new \RuntimeException('PRIVATE-READ-TOKEN'));
++        $this->app->instance(Transport::class, $transport);
++        $this->assertFalse((new DoxaApplicationAccess)->allowed('https://iam.test', '11111111-1111-4111-8111-111111111111'));
++    }
++}
+diff --git a/backend/tests/Feature/DoxaLinkTest.php b/backend/tests/Feature/DoxaLinkTest.php
+new file mode 100644
+index 0000000..54773dc
+--- /dev/null
++++ b/backend/tests/Feature/DoxaLinkTest.php
+@@ -0,0 +1,326 @@
++<?php
++
++namespace Tests\Feature;
++
++use App\Auth\DoxaApplicationAccess;
++use App\Models\DoxaLinkTransaction;
++use App\Models\Employee;
++use App\Models\ExternalIdentity;
++use App\Models\User;
++use Doxa\Laravel\Contracts\Transport;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Filesystem\Filesystem;
++use Illuminate\Support\Facades\DB;
++use Illuminate\Support\Facades\Schema;
++use Tests\Fixtures\OidcProviderTransport;
++use Tests\TestCase;
++
++class DoxaLinkTest extends TestCase
++{
++    private User $admin;
++    private User $target;
++    private Employee $employee;
++    private OidcProviderTransport $provider;
++    private string $directory;
++    private bool $allowed = true;
++
++    protected function setUp(): void
++    {
++        parent::setUp();
++        $this->directory = storage_path('framework/testing/link-'.bin2hex(random_bytes(8)));
++        config(['session.secure' => true, 'session.http_only' => true, 'session.same_site' => 'lax',
++            'cache.stores.link-test' => ['driver' => 'file', 'path' => $this->directory],
++            'doxa.cache_store' => 'link-test', 'doxa.issuer' => OidcProviderTransport::ISSUER,
++            'doxa.client_id' => OidcProviderTransport::CLIENT, 'doxa.client_secret' => null,
++            'doxa.redirect_uri' => OidcProviderTransport::CALLBACK,
++            'hrm.doxa_link_redirect_uri' => 'https://hrm.example.test/auth/doxa/link/callback']);
++        foreach (['2014_10_12_000000_create_users_table.php', '2026_09_15_000000_create_external_identities_table.php',
++            '2026_07_01_045079_create_audit_logs_table.php', '2026_10_08_000000_create_doxa_link_transactions_table.php'] as $file) {
++            (require database_path('migrations/'.$file))->up();
++        }
++        Schema::create('employees', function (Blueprint $table) {
++            $table->id(); $table->unsignedBigInteger('user_id')->nullable();
++            $table->string('first_name'); $table->string('last_name'); $table->softDeletes(); $table->timestamps();
++        });
++        $this->admin = User::factory()->create(['role' => 'hr_admin', 'is_active' => true]);
++        $this->target = User::factory()->create();
++        $this->employee = Employee::create(['user_id' => $this->target->id, 'first_name' => 'Local', 'last_name' => 'Employee']);
++        $this->provider = new OidcProviderTransport;
++        $this->provider->callback = config('hrm.doxa_link_redirect_uri');
++        $this->app->instance(Transport::class, $this->provider);
++        $access = \Mockery::mock(DoxaApplicationAccess::class);
++        $access->shouldReceive('allowed')->andReturnUsing(fn () => $this->allowed);
++        $this->app->instance(DoxaApplicationAccess::class, $access);
++        $this->actingAs($this->admin, 'web')->withSession(['link-test' => true]);
++    }
++
++    protected function tearDown(): void
++    {
++        foreach (['doxa_link_transactions', 'audit_logs', 'external_identities', 'employees', 'users'] as $table) {
++            Schema::dropIfExists($table);
++        }
++        if (str_starts_with($this->directory, storage_path('framework/testing/link-'))) {
++            (new Filesystem)->deleteDirectory($this->directory);
++        }
++        parent::tearDown();
++    }
++
++    private function begin(): DoxaLinkTransaction
++    {
++        $response = $this->postJson('/auth/doxa/employees/'.$this->employee->id.'/link');
++        $response->assertOk();
++        $this->withCookie(config('session.cookie'), $response->getCookie(config('session.cookie'))->getValue())->withCredentials();
++        parse_str(parse_url($response->json('authorization_url'), PHP_URL_QUERY), $query);
++        $this->assertSame('login', $query['prompt']);
++        $this->assertSame('S256', $query['code_challenge_method']);
++        $this->assertSame(config('hrm.doxa_link_redirect_uri'), $query['redirect_uri']);
++        $this->provider->authorization = $query;
++        return DoxaLinkTransaction::firstOrFail();
++    }
++
++    private function verified(): DoxaLinkTransaction
++    {
++        $transaction = $this->begin();
++        $this->app->forgetScopedInstances();
++        $this->app->instance(Transport::class, $this->provider);
++        $this->getJson('https://hrm.example.test/auth/doxa/link/callback?'.http_build_query(['state' => $this->provider->authorization['state'], 'code' => 'PRIVATE-CODE']))
++            ->assertRedirect('/employees/doxa-link/'.$transaction->id);
++        $this->assertSame(0, ExternalIdentity::count());
++        return $transaction->fresh();
++    }
++
++    public function test_verified_identity_requires_confirmation_and_exact_mapping_is_audited_without_secrets(): void
++    {
++        $transaction = $this->verified();
++        $this->getJson('/auth/doxa/link/'.$transaction->id)->assertOk()
++            ->assertJsonPath('employee_name', 'Local Employee')->assertJsonPath('identity.subject', 'public-subject');
++        $this->postJson('/auth/doxa/link/'.$transaction->id.'/confirm')->assertOk();
++        $this->assertDatabaseHas('external_identities', ['user_id' => $this->target->id, 'issuer' => OidcProviderTransport::ISSUER, 'subject' => 'public-subject']);
++        $this->assertDatabaseHas('audit_logs', ['action' => 'doxa.link.succeeded', 'user_id' => $this->admin->id, 'subject_id' => (string) $this->target->id]);
++        $this->postJson('/auth/doxa/link/'.$transaction->id.'/confirm')->assertStatus(409);
++        $this->assertSame(1, ExternalIdentity::count());
++        $audit = json_encode(DB::table('audit_logs')->get());
++        foreach (['PRIVATE-CODE', 'PRIVATE-ACCESS', 'PRIVATE-REFRESH', $this->provider->idToken, $this->provider->authorization['nonce']] as $secret) {
++            $this->assertStringNotContainsString($secret, $audit);
++        }
++    }
++
++    public function test_non_admin_cannot_initiate(): void
++    {
++        $this->actingAs($this->target)->postJson('/auth/doxa/employees/'.$this->employee->id.'/link')->assertForbidden();
++        $this->assertSame(0, DoxaLinkTransaction::count());
++    }
++
++    public function test_inactive_deleted_missing_and_already_linked_targets_are_rejected(): void
++    {
++        foreach (['inactive', 'deleted', 'missing', 'linked'] as $case) {
++            $this->target->update(['is_active' => $case !== 'inactive']);
++            DB::table('users')->where('id', $this->target->id)->update(['deleted_at' => $case === 'deleted' ? now() : null]);
++            $this->employee->update(['user_id' => $case === 'missing' ? null : $this->target->id]);
++            if ($case === 'linked') $this->target->externalIdentities()->create(['issuer' => OidcProviderTransport::ISSUER, 'subject' => 'different']);
++            $this->postJson('/auth/doxa/employees/'.$this->employee->id.'/link')->assertStatus(409);
++        }
++        $this->assertSame(0, DoxaLinkTransaction::count());
++    }
++
++    public function test_browser_submitted_target_identity_email_and_destination_are_rejected(): void
++    {
++        foreach (['user_id', 'issuer', 'subject', 'email', 'return_url'] as $field) {
++            $transaction = $this->verified();
++            $this->postJson('/auth/doxa/link/'.$transaction->id.'/confirm', [$field => 'altered'])
++                ->assertStatus(409)->assertJsonPath('error', 'unexpected_input');
++            DoxaLinkTransaction::query()->delete();
++        }
++        $this->assertSame(0, ExternalIdentity::count());
++    }
++
++    public function test_confirmation_rechecks_expiration_binding_target_relationship_activity_and_admin(): void
++    {
++        foreach (['expired', 'binding', 'relationship', 'inactive', 'deleted', 'admin', 'access'] as $case) {
++            $this->allowed = true;
++            $this->admin->update(['role' => 'hr_admin']);
++            $this->target->update(['is_active' => true]);
++            DB::table('users')->where('id', $this->target->id)->update(['deleted_at' => null]);
++            $this->employee->update(['user_id' => $this->target->id]);
++            $transaction = $this->verified();
++            if ($case === 'expired') $transaction->expires_at = now()->subSecond();
++            if ($case === 'binding') $transaction->session_binding = str_repeat('0', 64);
++            $transaction->save();
++            if ($case === 'relationship') $this->employee->update(['user_id' => $this->admin->id]);
++            if ($case === 'inactive') $this->target->update(['is_active' => false]);
++            if ($case === 'deleted') DB::table('users')->where('id', $this->target->id)->update(['deleted_at' => now()]);
++            if ($case === 'admin') $this->admin->update(['role' => 'applicant']);
++            if ($case === 'access') $this->allowed = false;
++            $this->postJson('/auth/doxa/link/'.$transaction->id.'/confirm')->assertStatus($case === 'admin' ? 403 : 409);
++            DoxaLinkTransaction::query()->delete();
++        }
++        $this->assertSame(0, ExternalIdentity::count());
++    }
++
++    public function test_cancel_consumes_transaction_without_mapping(): void
++    {
++        $transaction = $this->verified();
++        $this->postJson('/auth/doxa/link/'.$transaction->id.'/cancel')->assertOk();
++        $this->postJson('/auth/doxa/link/'.$transaction->id.'/confirm')->assertStatus(409);
++        $this->assertSame(0, ExternalIdentity::count());
++        $this->assertDatabaseHas('audit_logs', ['action' => 'doxa.link.cancelled']);
++    }
++
++    public function test_existing_identity_elsewhere_is_rejected_at_callback(): void
++    {
++        $this->admin->externalIdentities()->create(['issuer' => OidcProviderTransport::ISSUER, 'subject' => 'public-subject']);
++        $this->begin();
++        $this->app->forgetScopedInstances();
++        $this->app->instance(Transport::class, $this->provider);
++        $this->getJson('https://hrm.example.test/auth/doxa/link/callback?'.http_build_query(['state' => $this->provider->authorization['state'], 'code' => 'PRIVATE-CODE']))
++            ->assertStatus(409)->assertJsonPath('error', 'identity_conflict');
++        $this->assertSame($this->admin->id, ExternalIdentity::first()->user_id);
++    }
++
++    public function test_callback_denied_application_access_creates_no_mapping(): void
++    {
++        $this->allowed = false;
++        $this->begin();
++        $this->app->forgetScopedInstances();
++        $this->app->instance(Transport::class, $this->provider);
++        $this->getJson('https://hrm.example.test/auth/doxa/link/callback?'.http_build_query(['state' => $this->provider->authorization['state'], 'code' => 'PRIVATE-CODE']))
++            ->assertStatus(409)->assertJsonPath('error', 'application_access_denied');
++        $this->assertSame(0, ExternalIdentity::count());
++    }
++
++    public function test_same_user_duplicate_is_idempotent_but_competing_user_cannot_move_identity(): void
++    {
++        $transaction = $this->verified();
++        $this->target->externalIdentities()->create(['issuer' => OidcProviderTransport::ISSUER, 'subject' => 'public-subject']);
++        $this->postJson('/auth/doxa/link/'.$transaction->id.'/confirm')->assertOk();
++        $other = User::factory()->create();
++        $otherEmployee = Employee::create(['user_id' => $other->id, 'first_name' => 'Other', 'last_name' => 'User']);
++        $competing = new DoxaLinkTransaction;
++        $competing->forceFill([...$transaction->fresh()->getAttributes(), 'id' => bin2hex(random_bytes(32)),
++            'identity' => $transaction->fresh()->identity,
++            'employee_id' => $otherEmployee->id, 'target_user_id' => $other->id, 'oauth_state_hash' => null,
++            'status' => 'verified', 'consumed_at' => null])->save();
++        $this->postJson('/auth/doxa/link/'.$competing->id.'/confirm')->assertStatus(409)->assertJsonPath('error', 'identity_conflict');
++        $this->assertSame(1, ExternalIdentity::count());
++        $this->assertSame($this->target->id, ExternalIdentity::first()->user_id);
++    }
++
++    public function test_parallel_confirmations_cannot_duplicate_or_move_identity(): void
++    {
++        foreach (['same_transaction', 'different_users'] as $case) {
++            ExternalIdentity::query()->delete();
++            DoxaLinkTransaction::query()->delete();
++            $first = $this->verified();
++            $first->session_binding = hash('sha256', str_repeat('a', 40));
++            $first->save();
++            $second = $first;
++            if ($case === 'different_users') {
++                $other = User::factory()->create();
++                $employee = Employee::create(['user_id' => $other->id, 'first_name' => 'Other', 'last_name' => 'User']);
++                $second = new DoxaLinkTransaction;
++                $second->forceFill([...$first->getAttributes(), 'id' => bin2hex(random_bytes(32)),
++                    'identity' => $first->identity, 'oauth_state_hash' => null,
++                    'target_user_id' => $other->id, 'employee_id' => $employee->id])->save();
++            }
++            (new Filesystem)->ensureDirectoryExists($this->directory);
++            $database = $this->directory.'/concurrency.sqlite';
++            DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
++            $start = (string) (microtime(true) + 1);
++            $workers = [];
++            foreach ([$first, $second] as $transaction) {
++                $worker = new \Symfony\Component\Process\Process([PHP_BINARY, base_path('tests/Fixtures/confirm-link-worker.php'), $database, $transaction->id, (string) $this->admin->id, $start], base_path());
++                $worker->start();
++                $workers[] = $worker;
++            }
++            $statuses = [];
++            foreach ($workers as $worker) {
++                $worker->wait();
++                $this->assertTrue($worker->isSuccessful(), $worker->getErrorOutput());
++                $statuses[] = trim($worker->getOutput());
++            }
++            sort($statuses);
++            $this->assertSame(['200', '409'], $statuses);
++            $databaseConnection = new \PDO('sqlite:'.$database);
++            $links = $databaseConnection->query('SELECT user_id FROM external_identities')->fetchAll(\PDO::FETCH_COLUMN);
++            $this->assertCount(1, $links);
++            $this->assertContains((int) $links[0], [$first->target_user_id, $second->target_user_id]);
++            $databaseConnection = null;
++            (new Filesystem)->delete($database);
++        }
++    }
++
++    public function test_callback_replay_and_invalid_state_cannot_create_mapping(): void
++    {
++        $transaction = $this->verified();
++        $this->getJson('https://hrm.example.test/auth/doxa/link/callback?'.http_build_query(['state' => $this->provider->authorization['state'], 'code' => 'PRIVATE-CODE']))
++            ->assertStatus(409)->assertJsonPath('error', 'oidc_validation_failed');
++        $this->postJson('/auth/doxa/link/'.$transaction->id.'/confirm')->assertStatus(409);
++        $this->assertSame(0, ExternalIdentity::count());
++    }
++
++    public function test_browser_session_mutations_require_csrf(): void
++    {
++        $this->app->instance('env', 'local');
++        $this->postJson('/auth/doxa/employees/'.$this->employee->id.'/link')->assertStatus(419);
++        $this->assertSame(0, DoxaLinkTransaction::count());
++    }
++
++    public function test_email_matching_another_user_never_changes_the_selected_target(): void
++    {
++        $matching = User::factory()->create(['email' => 'local@example.test']);
++        $transaction = $this->verified();
++        $this->postJson('/auth/doxa/link/'.$transaction->id.'/confirm')->assertOk();
++        $this->assertSame($this->target->id, ExternalIdentity::first()->user_id);
++        $this->assertSame(0, $matching->externalIdentities()->count());
++    }
++
++    public function test_initiation_rejects_separately_supplied_user_id(): void
++    {
++        $this->postJson('/auth/doxa/employees/'.$this->employee->id.'/link', ['user_id' => $this->admin->id])
++            ->assertStatus(409)->assertJsonPath('error', 'unexpected_input');
++        $this->assertSame(0, DoxaLinkTransaction::count());
++    }
++
++    public function test_callback_rejects_expired_linking_transaction(): void
++    {
++        $transaction = $this->begin();
++        $transaction->expires_at = now()->subSecond();
++        $transaction->save();
++        $this->app->forgetScopedInstances();
++        $this->app->instance(Transport::class, $this->provider);
++        $this->getJson('https://hrm.example.test/auth/doxa/link/callback?'.http_build_query(['state' => $this->provider->authorization['state'], 'code' => 'PRIVATE-CODE']))
++            ->assertStatus(409)->assertJsonPath('error', 'transaction_expired');
++        $this->assertSame(0, ExternalIdentity::count());
++    }
++
++    public function test_callback_rejects_different_browser_before_code_exchange(): void
++    {
++        $this->begin();
++        $this->withCookie(config('session.cookie'), str_repeat('b', 40));
++        $this->app->forgetScopedInstances();
++        $this->app->instance(Transport::class, $this->provider);
++        $this->getJson('https://hrm.example.test/auth/doxa/link/callback?'.http_build_query(['state' => $this->provider->authorization['state'], 'code' => 'PRIVATE-CODE']))
++            ->assertStatus(409)->assertJsonPath('error', 'oidc_validation_failed');
++        $this->assertSame(0, $this->provider->exchanges);
++        $this->assertSame(0, ExternalIdentity::count());
++        $this->assertSame('pending', DoxaLinkTransaction::first()->status);
++    }
++
++    public function test_link_callback_cannot_consume_an_ordinary_login_transaction(): void
++    {
++        $response = $this->get('https://hrm.example.test/auth/doxa');
++        $response->assertRedirect();
++        $this->withCookie(config('session.cookie'), $response->getCookie(config('session.cookie'))->getValue())->withCredentials();
++        parse_str(parse_url($response->headers->get('Location'), PHP_URL_QUERY), $query);
++        $this->provider->authorization = $query;
++        $this->app->forgetScopedInstances();
++        $this->app->instance(Transport::class, $this->provider);
++        $this->getJson('https://hrm.example.test/auth/doxa/link/callback?'.http_build_query(['state' => $query['state'], 'code' => 'PRIVATE-CODE']))
++            ->assertStatus(409)->assertJsonPath('error', 'oidc_validation_failed');
++        $this->assertSame(0, $this->provider->exchanges);
++        $this->assertSame(0, ExternalIdentity::count());
++    }
++}
++
++
++
+diff --git a/backend/tests/Feature/DoxaLoginTest.php b/backend/tests/Feature/DoxaLoginTest.php
+new file mode 100644
+index 0000000..e020430
+--- /dev/null
++++ b/backend/tests/Feature/DoxaLoginTest.php
+@@ -0,0 +1,439 @@
++<?php
++
++namespace Tests\Feature;
++
++use App\Models\User;
++use Doxa\Laravel\Contracts\Transport;
++use Doxa\Laravel\Transaction\AuthorizationTransaction;
++use Illuminate\Filesystem\Filesystem;
++use Illuminate\Support\Facades\Schema;
++use PHPUnit\Framework\Attributes\DataProvider;
++use Tests\Fixtures\OidcProviderTransport as Provider;
++use Tests\TestCase;
++
++class DoxaLoginTest extends TestCase
++{
++    private string $directory;
++
++    private Provider $provider;
++
++    private string $browserId;
++
++    protected function setUp(): void
++    {
++        parent::setUp();
++        $this->app->instance('env', 'local'); // Keep real CSRF checks active.
++        $this->directory = storage_path('framework/testing/oidc-'.bin2hex(random_bytes(12)));
++        (new Filesystem)->makeDirectory($this->directory.'/sessions', 0755, true);
++        config([
++            'app.url' => 'https://hrm.example.test',
++            'session.driver' => 'file', 'session.files' => $this->directory.'/sessions',
++            'session.secure' => true, 'session.same_site' => 'lax', 'session.domain' => null,
++            'cache.default' => 'oidc-test',
++            'cache.stores.oidc-test' => ['driver' => 'file', 'path' => $this->directory.'/cache'],
++            'doxa.issuer' => Provider::ISSUER, 'doxa.client_id' => Provider::CLIENT,
++            'doxa.redirect_uri' => Provider::CALLBACK, 'doxa.client_secret' => null,
++            'doxa.cache_store' => 'oidc-test', 'hrm.frontend_url' => null,
++            'sanctum.stateful' => ['hrm.example.test'],
++        ]);
++        foreach (['2014_10_12_000000_create_users_table.php', '2019_12_14_000001_create_personal_access_tokens_table.php',
++            '2026_09_15_000000_create_external_identities_table.php'] as $migration) {
++            (require database_path('migrations/'.$migration))->up();
++        }
++        $this->provider = new Provider;
++        $this->app->instance(Transport::class, $this->provider);
++    }
++
++    protected function tearDown(): void
++    {
++        Schema::dropIfExists('external_identities');
++        Schema::dropIfExists('personal_access_tokens');
++        Schema::dropIfExists('users');
++        $directory = realpath($this->directory);
++        if ($directory !== false && dirname($directory) === realpath(storage_path('framework/testing'))) {
++            (new Filesystem)->deleteDirectory($directory);
++        }
++        parent::tearDown();
++    }
++
++    private function linkedUser(array $attributes = [], string $issuer = Provider::ISSUER, string $subject = 'public-subject'): User
++    {
++        $user = User::factory()->create(['email' => 'local@example.test', ...$attributes]);
++        $user->externalIdentities()->create(['issuer' => $issuer, 'subject' => $subject]);
++
++        return $user;
++    }
++
++    private function freshRequest(): void
++    {
++        $this->app->forgetScopedInstances();
++        $this->app->instance(Transport::class, $this->provider);
++        $this->app['auth']->forgetGuards();
++        $this->app['session']->forgetDrivers();
++        $this->app->forgetInstance('session.store');
++    }
++
++    private function begin(): array
++    {
++        $this->freshRequest();
++        $response = $this->get('https://hrm.example.test/auth/doxa');
++        $this->assertSame(302, $response->getStatusCode(), $response->getContent());
++        parse_str(parse_url($response->headers->get('Location'), PHP_URL_QUERY), $query);
++        $this->provider->authorization = $query;
++        $this->browserId = $response->getCookie(config('session.cookie'))->getValue();
++        $this->withCookie(config('session.cookie'), $this->browserId)->withCredentials();
++
++        return $query;
++    }
++
++    private function completeCallback(?array $query = null)
++    {
++        $this->freshRequest();
++
++        return $this->get(Provider::CALLBACK.'?'.http_build_query($query ?? [
++            'code' => 'PRIVATE-CODE', 'state' => $this->provider->authorization['state'],
++        ]));
++    }
++
++    public function test_entry_uses_sdk_openid_pkce_and_does_not_rotate_existing_session(): void
++    {
++        $initial = $this->get('https://hrm.example.test/sanctum/csrf-cookie')->getCookie(config('session.cookie'))->getValue();
++        $this->withCookie(config('session.cookie'), $initial);
++        $query = $this->begin();
++        $this->assertSame($initial, $this->browserId);
++        $this->assertSame('openid', $query['scope']);
++        $this->assertSame('S256', $query['code_challenge_method']);
++        $this->assertSame(Provider::CALLBACK, $query['redirect_uri']);
++        $this->assertSame(Provider::CLIENT, $query['client_id']);
++        $this->assertSame(43, strlen($query['state']));
++        $this->assertSame(43, strlen($query['nonce']));
++    }
++
++    public function test_linked_active_user_gets_rotated_secure_local_session_without_tokens_or_profile_sync(): void
++    {
++        $user = $this->linkedUser(['role' => 'hr_admin']);
++        $before = $user->fresh()->getAttributes();
++        $this->begin();
++        $this->provider->onExchange = function () {
++            $this->assertSame($this->browserId, $this->app['request']->session()->getId());
++            $this->assertGuest('web');
++        };
++        $response = $this->completeCallback();
++        $response->assertRedirect('/dashboard');
++        $this->assertAuthenticatedAs($user, 'web');
++        $cookie = $response->getCookie(config('session.cookie'));
++        $this->assertNotSame($this->browserId, $cookie->getValue());
++        $this->assertFileDoesNotExist($this->directory.'/sessions/'.$this->browserId);
++        $this->assertTrue($cookie->isSecure());
++        $this->assertTrue($cookie->isHttpOnly());
++        $this->assertSame('lax', $cookie->getSameSite());
++        $this->assertSame(0, $user->tokens()->count());
++        $this->assertSame($before, $user->fresh()->getAttributes());
++        $this->assertSame(0, $this->provider->userinfoCalls);
++        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
++        $response->assertHeader('Referrer-Policy', 'no-referrer');
++        $browserOutput = $response->getContent().json_encode($response->headers->all());
++        foreach (['PRIVATE-CODE', 'PRIVATE-ACCESS', 'PRIVATE-REFRESH', $this->provider->idToken] as $secret) {
++            $this->assertStringNotContainsString($secret, $browserOutput);
++            foreach ((new Filesystem)->files($this->directory.'/sessions') as $file) {
++                $this->assertStringNotContainsString($secret, $file->getContents());
++            }
++        }
++        $this->withCookie(config('session.cookie'), $cookie->getValue());
++        $this->freshRequest();
++        $this->withHeader('Origin', 'https://hrm.example.test')->getJson('https://hrm.example.test/api/auth/me')
++            ->assertOk()->assertJsonPath('id', $user->id)->assertJsonPath('role', 'hr_admin');
++    }
++
++    public function test_unknown_subject_with_matching_email_does_not_link_or_provision(): void
++    {
++        $user = User::factory()->create(['email' => 'local@example.test']);
++        $this->begin();
++        $this->completeCallback()->assertForbidden()->assertExactJson(['error' => 'access_denied']);
++        $this->assertGuest('web');
++        $this->assertSame(1, User::count());
++        $this->assertSame(0, $user->externalIdentities()->count());
++    }
++
++    public function test_oidc_session_mutation_still_requires_valid_csrf(): void
++    {
++        $user = $this->linkedUser();
++        $this->begin();
++        $response = $this->completeCallback();
++        $response->assertRedirect();
++        $this->withCookie(config('session.cookie'), $response->getCookie(config('session.cookie'))->getValue());
++        $this->withHeader('Origin', 'https://hrm.example.test');
++        $xsrf = $response->getCookie('XSRF-TOKEN', false)->getValue();
++
++        $this->freshRequest();
++        $this->putJson('https://hrm.example.test/api/auth/profile', ['name' => 'Changed'])->assertStatus(419);
++        $this->freshRequest();
++        $this->withHeader('X-XSRF-TOKEN', 'invalid')
++            ->putJson('https://hrm.example.test/api/auth/profile', ['name' => 'Changed'])->assertStatus(419);
++        $this->assertSame($user->name, $user->fresh()->name);
++
++        $this->freshRequest();
++        $this->withHeader('X-XSRF-TOKEN', $xsrf)
++            ->putJson('https://hrm.example.test/api/auth/profile', ['name' => 'Changed'])->assertOk()
++            ->assertJsonPath('user.id', $user->id);
++        $this->assertSame('Changed', $user->fresh()->name);
++        $this->assertSame(0, $user->tokens()->count());
++    }
++
++    public static function nonmatchingKeys(): array
++    {
++        return [
++            'issuer case' => ['https://IAM.example.test', 'public-subject'],
++            'issuer trailing slash' => [Provider::ISSUER.'/', 'public-subject'],
++            'subject case' => [Provider::ISSUER, 'Public-subject'],
++            'subject trailing space' => [Provider::ISSUER, 'public-subject '],
++        ];
++    }
++
++    #[DataProvider('nonmatchingKeys')]
++    public function test_identity_keys_are_not_normalized(string $issuer, string $subject): void
++    {
++        $this->linkedUser([], $issuer, $subject);
++        $this->begin();
++        $this->completeCallback()->assertForbidden();
++        $this->assertGuest('web');
++    }
++
++    public function test_exact_subject_with_trailing_space_is_preserved(): void
++    {
++        $user = $this->linkedUser([], Provider::ISSUER, 'public-subject ');
++        $this->provider->claims['sub'] = 'public-subject ';
++        $this->begin();
++        $this->completeCallback()->assertRedirect();
++        $this->assertAuthenticatedAs($user, 'web');
++    }
++
++    public static function unavailableUsers(): array
++    {
++        return ['inactive' => [['is_active' => false]], 'deleted' => [['deleted_at' => '2026-01-01 00:00:00']]];
++    }
++
++    #[DataProvider('unavailableUsers')]
++    public function test_inactive_or_deleted_linked_user_is_denied(array $attributes): void
++    {
++        $this->linkedUser($attributes);
++        $this->begin();
++        $this->completeCallback()->assertForbidden()->assertExactJson(['error' => 'access_denied']);
++        $this->assertGuest('web');
++    }
++
++    public function test_overlong_subject_is_rejected_without_truncation(): void
++    {
++        $this->linkedUser([], Provider::ISSUER, str_repeat('a', 255));
++        $this->provider->claims['sub'] = str_repeat('a', 256);
++        $this->begin();
++        $this->completeCallback()->assertForbidden();
++        $this->assertGuest('web');
++    }
++
++    public function test_multibyte_subject_is_limited_by_bytes_not_character_count(): void
++    {
++        $this->provider->claims['sub'] = str_repeat('é', 128);
++        $this->begin();
++        $this->completeCallback()->assertForbidden();
++        $this->assertSame(0, User::count());
++    }
++
++    public function test_callback_without_transaction_is_rejected_by_sdk(): void
++    {
++        $this->completeCallback(['code' => 'PRIVATE-CODE', 'state' => str_repeat('x', 43)])
++            ->assertStatus(400)->assertExactJson(['error' => 'invalid_state']);
++        $this->assertSame(0, $this->provider->exchanges);
++        $this->assertGuest('web');
++    }
++
++    public function test_missing_state_and_duplicate_query_are_rejected_by_sdk(): void
++    {
++        $this->completeCallback(['code' => 'PRIVATE-CODE'])->assertStatus(400)->assertExactJson(['error' => 'invalid_state']);
++        $query = $this->begin();
++        $this->freshRequest();
++        $this->get(Provider::CALLBACK.'?state='.$query['state'].'&state='.$query['state'].'&code=PRIVATE-CODE')
++            ->assertStatus(400)->assertExactJson(['error' => 'authorization_error']);
++        $this->assertSame(0, $this->provider->exchanges);
++    }
++
++    public function test_other_browser_session_cannot_use_transaction(): void
++    {
++        $this->begin();
++        $this->withCookie(config('session.cookie'), str_repeat('b', 40));
++        $this->completeCallback()->assertStatus(400)->assertExactJson(['error' => 'invalid_state']);
++        $this->assertSame(0, $this->provider->exchanges);
++    }
++
++    public function test_replayed_callback_is_rejected_by_sdk_even_in_original_session(): void
++    {
++        $this->linkedUser();
++        $this->begin();
++        $this->completeCallback()->assertRedirect();
++        $this->completeCallback()->assertStatus(400)->assertExactJson(['error' => 'transaction_replay']);
++        $this->assertSame(1, $this->provider->exchanges);
++    }
++
++    public static function changedContexts(): array
++    {
++        return ['client' => ['client_id', 'different-client'], 'callback' => ['redirect_uri', 'https://hrm.example.test/other-callback']];
++    }
++
++    #[DataProvider('changedContexts')]
++    public function test_changed_transaction_context_is_rejected_before_exchange(string $key, string $value): void
++    {
++        $this->linkedUser();
++        $this->begin();
++        config(['doxa.'.$key => $value]);
++        $this->completeCallback()->assertStatus(400);
++        $this->assertSame(0, $this->provider->exchanges);
++        $this->assertGuest('web');
++    }
++
++    public static function invalidClaims(): array
++    {
++        return [
++            'nonce' => [['nonce' => 'wrong-nonce'], 'invalid_nonce'],
++            'issuer' => [['iss' => 'https://other-iam.example.test'], 'invalid_issuer'],
++            'audience' => [['aud' => 'other-client'], 'invalid_audience'],
++            'expired token' => [['exp' => 1], 'expired_id_token'],
++        ];
++    }
++
++    #[DataProvider('invalidClaims')]
++    public function test_sdk_id_token_validation_failures_are_safe_and_terminal(array $claims, string $category): void
++    {
++        $this->linkedUser();
++        $this->provider->claims = $claims;
++        $this->begin();
++        $this->completeCallback()->assertStatus(400)->assertExactJson(['error' => $category]);
++        $this->assertGuest('web');
++        $this->completeCallback()->assertStatus(400)->assertExactJson(['error' => 'transaction_replay']);
++        $this->assertSame(1, $this->provider->exchanges);
++    }
++
++    public function test_sdk_rejects_invalid_signature(): void
++    {
++        $this->linkedUser();
++        $this->provider->badSignature = true;
++        $this->begin();
++        $this->completeCallback()->assertStatus(400)->assertExactJson(['error' => 'invalid_signature']);
++        $this->assertGuest('web');
++    }
++
++    public function test_pkce_exchange_failure_is_safe_and_cannot_be_retried(): void
++    {
++        $this->linkedUser();
++        $this->provider->rejectPkce = true;
++        $this->begin();
++        $response = $this->completeCallback();
++        $response->assertStatus(400)->assertExactJson(['error' => 'token_exchange_failure']);
++        $this->assertStringNotContainsString('PRIVATE', $response->getContent());
++        $this->completeCallback()->assertStatus(400)->assertExactJson(['error' => 'transaction_replay']);
++        $this->assertSame(1, $this->provider->exchanges);
++        $this->assertGuest('web');
++    }
++
++    public function test_expired_pending_sdk_transaction_is_rejected_before_exchange(): void
++    {
++        $this->begin();
++        $cache = app('cache')->store('oidc-test');
++        $key = 'doxa.transaction.'.hash('sha256', $this->provider->authorization['state']);
++        $transaction = app('encrypter')->decrypt($cache->get($key));
++        // Expire the actual SDK-created pending fixture; no identity or client mock.
++        $expired = new AuthorizationTransaction($transaction->state, $transaction->nonce(), $transaction->verifier(),
++            $transaction->issuer, $transaction->clientId, $transaction->redirectUri, $transaction->scopes,
++            time() - 700, time() - 100, $transaction->browserBinding(), $transaction->provider);
++        $cache->put($key, app('encrypter')->encrypt($expired), 60);
++        $this->completeCallback()->assertStatus(400)->assertExactJson(['error' => 'transaction_expired']);
++        $this->assertSame(0, $this->provider->exchanges);
++    }
++
++    public function test_provider_access_denial_is_safe_and_terminal(): void
++    {
++        $query = $this->begin();
++        $this->completeCallback(['state' => $query['state'], 'error' => 'access_denied', 'error_description' => 'PRIVATE'])
++            ->assertStatus(400)->assertExactJson(['error' => 'user_denied_authorization']);
++        $this->completeCallback()->assertStatus(400)->assertExactJson(['error' => 'transaction_replay']);
++        $this->assertSame(0, $this->provider->exchanges);
++    }
++
++    public function test_iam_roles_do_not_grant_local_hr_admin_authorization(): void
++    {
++        $user = $this->linkedUser(['role' => 'applicant']);
++        $this->begin();
++        $response = $this->completeCallback();
++        $response->assertRedirect();
++        $this->assertSame('applicant', $user->fresh()->role);
++        $this->withCookie(config('session.cookie'), $response->getCookie(config('session.cookie'))->getValue());
++        $this->freshRequest();
++        $this->withHeader('Origin', 'https://hrm.example.test')->getJson('https://hrm.example.test/api/employees')->assertForbidden();
++    }
++
++    public function test_browser_return_target_is_ignored(): void
++    {
++        $this->linkedUser();
++        $this->begin();
++        $this->completeCallback(['code' => 'PRIVATE-CODE', 'state' => $this->provider->authorization['state'],
++            'return_to' => 'https://attacker.example.test'])->assertRedirect('/dashboard');
++    }
++
++    public function test_fixed_server_frontend_origin_is_used(): void
++    {
++        $this->linkedUser();
++        config(['hrm.frontend_url' => 'https://frontend.example.test']);
++        $this->begin();
++        $this->completeCallback()->assertRedirect('https://frontend.example.test/dashboard');
++    }
++
++    public function test_invalid_frontend_configuration_denies_before_local_login(): void
++    {
++        $this->linkedUser();
++        config(['hrm.frontend_url' => 'https://frontend.example.test/?return_to=other']);
++        $this->begin();
++        $this->completeCallback()->assertStatus(400)->assertExactJson(['error' => 'configuration_error']);
++        $this->assertGuest('web');
++    }
++
++    public function test_missing_sdk_configuration_is_a_safe_error_even_with_debug_enabled(): void
++    {
++        config(['doxa.client_id' => null, 'app.debug' => true]);
++        $this->get('https://hrm.example.test/auth/doxa')->assertStatus(400)->assertExactJson(['error' => 'configuration_error'])
++            ->assertHeader('Referrer-Policy', 'no-referrer');
++    }
++
++    public static function unsafeSessions(): array
++    {
++        return [
++            'insecure cookie' => ['secure', false],
++            'JS-readable cookie' => ['http_only', false],
++            'browser session storage' => ['driver', 'cookie'],
++            'callback-incompatible SameSite' => ['same_site', 'strict'],
++        ];
++    }
++
++    #[DataProvider('unsafeSessions')]
++    public function test_sdk_rejects_unsafe_browser_session_configuration(string $key, mixed $value): void
++    {
++        config(['session.'.$key => $value]);
++        $this->get('https://hrm.example.test/auth/doxa')->assertStatus(400)
++            ->assertExactJson(['error' => 'configuration_error']);
++        $this->assertGuest('web');
++    }
++
++    public function test_discovery_failure_does_not_expose_provider_response(): void
++    {
++        $this->provider->discoveryFailure = true;
++        $response = $this->get('https://hrm.example.test/auth/doxa');
++        $response->assertStatus(400);
++        $this->assertStringNotContainsString('PRIVATE', $response->getContent());
++    }
++
++    public function test_database_failure_is_generic_without_sql_or_identity_details(): void
++    {
++        $this->begin();
++        Schema::drop('external_identities');
++        $this->completeCallback()->assertStatus(503)->assertExactJson(['error' => 'authentication_unavailable']);
++        $this->assertGuest('web');
++    }
++}
+diff --git a/backend/tests/Fixtures/OidcProviderTransport.php b/backend/tests/Fixtures/OidcProviderTransport.php
+new file mode 100644
+index 0000000..900b7b6
+--- /dev/null
++++ b/backend/tests/Fixtures/OidcProviderTransport.php
+@@ -0,0 +1,113 @@
++<?php
++
++namespace Tests\Fixtures;
++
++use Closure;
++use Doxa\Laravel\Contracts\Transport;
++use Doxa\Laravel\Http\JsonResponse;
++use Firebase\JWT\JWT;
++use RuntimeException;
++
++/** Only the provider network is simulated; all SDK services remain real. */
++final class OidcProviderTransport implements Transport
++{
++    public const ISSUER = 'https://iam.example.test';
++
++    public const CLIENT = 'hrm-test-client';
++
++    public const CALLBACK = 'https://hrm.example.test/auth/doxa/callback';
++
++    public array $authorization = [];
++    public string $callback = self::CALLBACK;
++
++    public array $claims = [];
++
++    public int $exchanges = 0;
++
++    public int $userinfoCalls = 0;
++
++    public bool $rejectPkce = false;
++
++    public bool $badSignature = false;
++
++    public bool $discoveryFailure = false;
++
++    public ?Closure $onExchange = null;
++
++    public string $idToken = '';
++
++    private string $privateKey;
++
++    private array $jwk;
++
++    public function __construct()
++    {
++        $options = ['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048,
++            'config' => __DIR__.'/oidc-openssl.cnf'];
++        $key = openssl_pkey_new($options);
++        openssl_pkey_export($key, $pem, null, $options);
++        $this->privateKey = $pem;
++        $rsa = openssl_pkey_get_details($key)['rsa'];
++        $encode = fn ($value) => rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
++        $this->jwk = ['kty' => 'RSA', 'use' => 'sig', 'alg' => 'RS256', 'kid' => 'test-key',
++            'n' => $encode($rsa['n']), 'e' => $encode($rsa['e'])];
++    }
++
++    public function request(string $method, string $url, array $options = []): JsonResponse
++    {
++        if ($method === 'GET' && $url === self::ISSUER.'/.well-known/openid-configuration') {
++            if ($this->discoveryFailure) {
++                throw new RuntimeException('PRIVATE provider response');
++            }
++
++            return new JsonResponse([
++                'issuer' => self::ISSUER,
++                'authorization_endpoint' => self::ISSUER.'/oauth/authorize',
++                'token_endpoint' => self::ISSUER.'/oauth/token',
++                'jwks_uri' => self::ISSUER.'/oauth/jwks',
++                'userinfo_endpoint' => self::ISSUER.'/oauth/userinfo',
++                'response_types_supported' => ['code'], 'response_modes_supported' => ['query'],
++                'grant_types_supported' => ['authorization_code'], 'subject_types_supported' => ['public'],
++                'code_challenge_methods_supported' => ['S256'], 'id_token_signing_alg_values_supported' => ['RS256'],
++                'scopes_supported' => ['openid'], 'token_endpoint_auth_methods_supported' => ['none', 'client_secret_basic'],
++            ]);
++        }
++        if ($method === 'GET' && $url === self::ISSUER.'/oauth/jwks') {
++            return new JsonResponse(['keys' => [$this->jwk]]);
++        }
++        if ($url === self::ISSUER.'/oauth/userinfo') {
++            $this->userinfoCalls++;
++            throw new RuntimeException('UserInfo must remain disabled');
++        }
++        if ($method !== 'POST' || $url !== self::ISSUER.'/oauth/token') {
++            throw new RuntimeException('Unexpected provider endpoint');
++        }
++
++        $this->exchanges++;
++        if ($this->onExchange !== null) {
++            ($this->onExchange)();
++        }
++        $form = $options['form_params'];
++        $challenge = rtrim(strtr(base64_encode(hash('sha256', $form['code_verifier'], true)), '+/', '-_'), '=');
++        if ($this->rejectPkce || $challenge !== $this->authorization['code_challenge']
++            || $form['client_id'] !== self::CLIENT || $form['redirect_uri'] !== $this->callback
++            || $form['grant_type'] !== 'authorization_code' || $form['code'] !== 'PRIVATE-CODE') {
++            throw new RuntimeException('PRIVATE code/PKCE exchange failure');
++        }
++
++        $claims = [...[
++            'iss' => self::ISSUER, 'sub' => 'public-subject', 'aud' => self::CLIENT,
++            'iat' => time(), 'exp' => time() + 300, 'nonce' => $this->authorization['nonce'],
++            'email' => 'local@example.test', 'name' => 'IAM name must not sync', 'roles' => ['hr_admin'],
++        ], ...$this->claims];
++        $this->idToken = JWT::encode($claims, $this->privateKey, 'RS256', 'test-key');
++        if ($this->badSignature) {
++            $parts = explode('.', $this->idToken);
++            $parts[2] = str_repeat('A', strlen($parts[2]));
++            $this->idToken = implode('.', $parts);
++        }
++
++        return new JsonResponse(['id_token' => $this->idToken, 'access_token' => 'PRIVATE-ACCESS',
++            'refresh_token' => 'PRIVATE-REFRESH', 'token_type' => 'Bearer', 'expires_in' => 300]);
++    }
++}
+diff --git a/backend/tests/Fixtures/confirm-link-worker.php b/backend/tests/Fixtures/confirm-link-worker.php
+new file mode 100644
+index 0000000..4d1c9b6
+--- /dev/null
++++ b/backend/tests/Fixtures/confirm-link-worker.php
+@@ -0,0 +1,24 @@
++<?php
++
++// File-backed SQLite concurrency harness. No real IAM/network or credentials.
++require __DIR__.'/../../vendor/autoload.php';
++$app = require __DIR__.'/../../bootstrap/app.php';
++$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
++config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $argv[1]]);
++\Illuminate\Support\Facades\DB::purge('sqlite');
++\Illuminate\Support\Facades\DB::statement('PRAGMA busy_timeout = 5000');
++config(['doxa.issuer' => \App\Models\DoxaLinkTransaction::findOrFail($argv[2])->identity['issuer']]);
++\Illuminate\Support\Facades\Auth::guard('web')->setUser(\App\Models\User::findOrFail($argv[3]));
++$session = $app['session']->driver('array');
++$session->setId(str_repeat('a', 40));
++$session->start();
++$request = \Illuminate\Http\Request::create('/auth/doxa/link/'.$argv[2].'/confirm', 'POST');
++$request->setLaravelSession($session);
++$access = new class extends \App\Auth\DoxaApplicationAccess {
++    public function allowed(string $issuer, string $subject): bool { return true; }
++};
++$controller = new \App\Http\Controllers\DoxaLinkController(new \App\Auth\DoxaLinkClient, $access, new \App\Auth\DoxaLinkAudit);
++while (microtime(true) < (float) $argv[4]) usleep(1000);
++$response = $controller->confirm($request, $argv[2]);
++echo $response->getStatusCode();
++if ($response->getStatusCode() !== 200) fwrite(STDERR, $response->getContent());
+diff --git a/backend/tests/Fixtures/oidc-openssl.cnf b/backend/tests/Fixtures/oidc-openssl.cnf
+new file mode 100644
+index 0000000..9b17749
+--- /dev/null
++++ b/backend/tests/Fixtures/oidc-openssl.cnf
+@@ -0,0 +1,2 @@
++[req]
++default_bits = 2048
+diff --git a/frontend/app/(dashboard)/employees/doxa-link/[id]/page.tsx b/frontend/app/(dashboard)/employees/doxa-link/[id]/page.tsx
+new file mode 100644
+index 0000000..450325d
+--- /dev/null
++++ b/frontend/app/(dashboard)/employees/doxa-link/[id]/page.tsx
+@@ -0,0 +1,55 @@
++'use client'
++
++import { useEffect, useState } from 'react'
++import api from '@/services/api'
++import Link from 'next/link'
++
++type Confirmation = { employee_name: string; identity: { name: string | null; email: string | null; issuer: string; subject: string } }
++
++export default function DoxaLinkConfirmation({ params }: { params: { id: string } }) {
++  const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
++  const [pending, setPending] = useState(false)
++  const [error, setError] = useState('')
++  useEffect(() => {
++    let mounted = true
++    if (params.id === 'error') {
++      setError('Doxa linking was rejected. Check application access and whether the identity is already linked, then return to the employee and start again.')
++      return
++    }
++    api.get(`/auth/doxa/link/${encodeURIComponent(params.id)}`).then(({ data }) => {
++      if (mounted) setConfirmation(data)
++    }).catch(() => { if (mounted) setError('This linking request is unavailable or has expired. Return to the employee and start again.') })
++    return () => { mounted = false }
++  }, [params.id])
++  async function act(action: 'confirm' | 'cancel') {
++    setPending(true)
++    setError('')
++    try {
++      const { data } = await api.post(`/auth/doxa/link/${encodeURIComponent(params.id)}/${action}`, {})
++      window.location.assign(data.destination)
++    } catch {
++      setError('The request could not be completed. It may have expired, access may have changed, or this identity may already be linked. Return to the employee and start again.')
++      setPending(false)
++      setConfirmation(null)
++    }
++  }
++  return <section className="max-w-2xl mx-auto bg-white border rounded-2xl p-8 space-y-6" aria-labelledby="confirmation-title">
++    <h1 id="confirmation-title" className="text-2xl font-bold">Confirm Doxa identity link</h1>
++    {!confirmation && !error && <p role="status">Loading confirmation…</p>}
++    {confirmation && <>
++      <dl className="space-y-3 break-all">
++        <div><dt className="font-semibold">Selected HRM employee</dt><dd>{confirmation.employee_name}</dd></div>
++        <div><dt className="font-semibold">Authenticated Doxa identity</dt><dd>{confirmation.identity.name || 'Name not provided'}</dd><dd>{confirmation.identity.email}</dd></div>
++        <div><dt className="font-semibold">Doxa issuer</dt><dd>{confirmation.identity.issuer}</dd></div>
++        <div><dt className="font-semibold">Doxa subject</dt><dd>{confirmation.identity.subject}</dd></div>
++      </dl>
++      <p>Confirm that this Doxa identity should be linked to this HRM account.</p>
++      <div className="flex gap-3">
++        <button disabled={pending} onClick={() => act('confirm')} className="bg-violet-600 text-white rounded-lg px-4 py-2 disabled:opacity-50">{pending ? 'Processing…' : 'Confirm link'}</button>
++        <button disabled={pending} onClick={() => act('cancel')} className="border rounded-lg px-4 py-2 disabled:opacity-50">Cancel</button>
++      </div>
++    </>}
++    {error && <p role="alert" className="text-red-700">{error}</p>}
++    <Link href="/employees" className="inline-block text-violet-700 underline">Return to employees</Link>
++  </section>
++}
+diff --git a/frontend/components/DoxaIdentity.tsx b/frontend/components/DoxaIdentity.tsx
+new file mode 100644
+index 0000000..70a1754
+--- /dev/null
++++ b/frontend/components/DoxaIdentity.tsx
+@@ -0,0 +1,41 @@
++'use client'
++
++import { useEffect, useState } from 'react'
++import api from '@/services/api'
++
++export default function DoxaIdentity({ employeeId, identities = [] }: {
++  employeeId: number; identities?: { issuer: string; subject: string }[]
++}) {
++  const [authorized, setAuthorized] = useState(false)
++  const [pending, setPending] = useState(false)
++  const [error, setError] = useState('')
++  useEffect(() => {
++    let mounted = true
++    api.get('/api/auth/me').then(({ data }) => {
++      if (mounted) setAuthorized(data.role === 'hr_admin' && data.is_active === true)
++    }).catch(() => {})
++    return () => { mounted = false }
++  }, [])
++  async function link() {
++    setPending(true)
++    setError('')
++    try {
++      const { data } = await api.post(`/auth/doxa/employees/${employeeId}/link`, {})
++      window.location.assign(data.authorization_url)
++    } catch {
++      setError('Unable to start linking. Check that this account is active and not already linked, then try again.')
++      setPending(false)
++    }
++  }
++  return <section className="bg-white rounded-2xl border border-gray-100 p-6 space-y-3" aria-labelledby="doxa-identity-title">
++    <h2 id="doxa-identity-title" className="text-lg font-semibold">Doxa Identity</h2>
++    {identities.length ? <><p>Linked</p>{identities.map(identity => <dl key={`${identity.issuer}:${identity.subject}`} className="break-all text-sm">
++      <dt className="font-medium">Issuer</dt><dd>{identity.issuer}</dd>
++      <dt className="font-medium">Subject</dt><dd>{identity.subject}</dd>
++    </dl>)}</> : <><p>Not linked</p>{authorized && <button disabled={pending} onClick={link}
++      className="px-4 py-2 rounded-lg bg-violet-600 text-white disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-violet-500">
++      {pending ? 'Opening Doxa…' : 'Link Doxa account'}
++    </button>}</>}
++    {error && <p role="alert" className="text-red-700">{error}</p>}
++  </section>
++}
+diff --git a/frontend/tests/doxa-link.test.cjs b/frontend/tests/doxa-link.test.cjs
+new file mode 100644
+index 0000000..ce81a82
+--- /dev/null
++++ b/frontend/tests/doxa-link.test.cjs
+@@ -0,0 +1,107 @@
++const { test } = require('node:test');
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const vm = require('node:vm');
++const ts = require('typescript');
++
++function mount(file, props, api) {
++  const states = [], effects = [], destinations = [];
++  let cursor = 0, tree, component;
++  const react = {
++    createElement(type, props, ...children) { return { type, props: props || {}, children: children.flat(Infinity) }; },
++    useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], v => { states[i] = v; }]; },
++    useEffect(fn) { const i = cursor++; if (!(i in states)) { states[i] = true; effects.push(fn); } },
++  };
++  const context = { exports: {}, URLSearchParams, React: react,
++    window: { location: { assign: value => destinations.push(value) } },
++    require(name) { if (name === 'react') return react; if (name === '@/services/api') return { __esModule: true, default: api }; return { __esModule: true, default: 'a' }; },
++  };
++  vm.runInNewContext(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
++    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
++  }).outputText.replace(/React\.createElement/g, 'require("react").createElement'), context);
++  component = context.exports.default;
++  function render() { cursor = 0; tree = component(props); return tree; }
++  function visit(node) { return node && typeof node === 'object' ? [node, ...node.children.flatMap(visit)] : []; }
++  function nodes() { return visit(tree); }
++  function text(node = tree) { return node && typeof node === 'object' ? node.children.map(text).join(' ') : String(node ?? ''); }
++  render();
++  return { render, nodes, text, destinations, async settle() { effects.splice(0).forEach(fn => fn()); await new Promise(resolve => setImmediate(resolve)); render(); } };
++}
++const detail = 'components/DoxaIdentity.tsx';
++const confirmation = 'app/(dashboard)/employees/doxa-link/[id]/page.tsx';
++
++test('link button is restricted to active HR admins and shows pending state', async () => {
++  for (const role of ['applicant', 'management', 'hr_admin']) {
++    let resolve;
++    const app = mount(detail, { employeeId: 12 }, { get: async () => ({ data: { role, is_active: true } }), post: () => new Promise(r => { resolve = r; }) });
++    await app.settle();
++    const button = app.nodes().find(n => n.type === 'button');
++    assert.equal(Boolean(button), role === 'hr_admin');
++    if (button) {
++      const pending = button.props.onClick(); app.render();
++      assert.match(app.text(), /Opening Doxa/);
++      assert.equal(app.nodes().find(n => n.type === 'button').props.disabled, true);
++      resolve({ data: { authorization_url: 'https://iam.test/authorize?prompt=login' } }); await pending;
++      assert.equal(app.destinations[0], 'https://iam.test/authorize?prompt=login');
++    }
++  }
++});
++
++test('linked detail displays exact identity and offers no relinking', async () => {
++  const app = mount(detail, { employeeId: 12, identities: [{ issuer: 'https://iam.test', subject: 'ExactSubject' }] }, { get: async () => ({ data: { role: 'hr_admin', is_active: true } }) });
++  await app.settle();
++  assert.match(app.text(), /Linked.*https:\/\/iam.test.*ExactSubject/);
++  assert.equal(app.nodes().filter(n => n.type === 'button').length, 0);
++});
++
++test('confirmation shows verified profile, submits no identity or target, and supports cancel', async () => {
++  for (const action of ['confirm', 'cancel']) {
++    const calls = [];
++    const app = mount(confirmation, { params: { id: 'opaque' } }, {
++      get: async () => ({ data: { employee_name: 'Local Employee', access_token: 'PRIVATE-ACCESS', identity: { name: 'Doxa Person', email: 'person@test', issuer: 'https://iam.test', subject: 'ExactSubject', id_token: 'PRIVATE-ID' } } }),
++      post: async (...args) => { calls.push(args); return { data: { destination: '/employees/12' } }; },
++    });
++    await app.settle();
++    assert.match(app.text(), /Local Employee.*Doxa Person.*https:\/\/iam.test.*ExactSubject/);
++    const buttons = app.nodes().filter(n => n.type === 'button');
++    const pending = buttons[action === 'confirm' ? 0 : 1].props.onClick();
++    app.render();
++    assert.equal(app.nodes().filter(n => n.type === 'button').every(n => n.props.disabled), true);
++    await pending;
++    assert.equal(calls[0][0], `/auth/doxa/link/opaque/${action}`);
++    assert.equal(JSON.stringify(calls[0][1]), '{}');
++    assert.equal(app.destinations[0], '/employees/12');
++    assert.doesNotMatch(app.text(), /access_token|refresh_token|id_token|code_verifier|PRIVATE-/);
++  }
++});
++
++test('conflict prevents further confirmation and provides recovery', async () => {
++  const app = mount(confirmation, { params: { id: 'opaque' } }, {
++    get: async () => ({ data: { employee_name: 'Local', identity: { issuer: 'issuer', subject: 'subject' } } }),
++    post: async () => { throw new Error('conflict'); },
++  });
++  await app.settle();
++  await app.nodes().find(n => n.type === 'button').props.onClick(); app.render();
++  assert.match(app.text(), /already be linked/);
++  assert.equal(app.nodes().filter(n => n.type === 'button').length, 0);
++  assert.equal(app.destinations.length, 0);
++});
++
++test('callback rejection displays recovery without requesting a confirmation', async () => {
++  const app = mount(confirmation, { params: { id: 'error' } }, { get() { throw new Error('must not fetch'); } });
++  await app.settle();
++  assert.match(app.text(), /Doxa linking was rejected/);
++  assert.equal(app.nodes().filter(n => n.type === 'button').length, 0);
++});
++
++test('initiation failure is visible and releases the pending button', async () => {
++  const app = mount(detail, { employeeId: 12 }, {
++    get: async () => ({ data: { role: 'hr_admin', is_active: true } }),
++    post: async () => { throw new Error('PRIVATE-CODE'); },
++  });
++  await app.settle();
++  await app.nodes().find(n => n.type === 'button').props.onClick(); app.render();
++  assert.match(app.text(), /Unable to start linking/);
++  assert.doesNotMatch(app.text(), /PRIVATE-CODE/);
++  assert.equal(app.nodes().find(n => n.type === 'button').props.disabled, false);
++});
+diff --git a/frontend/tests/session-auth.test.cjs b/frontend/tests/session-auth.test.cjs
+new file mode 100644
+index 0000000..21bc05d
+--- /dev/null
++++ b/frontend/tests/session-auth.test.cjs
+@@ -0,0 +1,132 @@
++const { test } = require('node:test');
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const vm = require('node:vm');
++const ts = require('typescript');
++
++function load(file, context) {
++  context.exports = {};
++  vm.runInNewContext(ts.transpileModule(fs.readFileSync(require.resolve(file), 'utf8'), {
++    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
++  }).outputText, context);
++  return context.exports;
++}
++
++function client(cookie = '', token = null) {
++  const calls = [];
++  let options, request;
++  const axios = {
++    create(value) {
++      options = value;
++      return { interceptors: { request: { use(fn) { request = fn; } }, response: { use() {} } } };
++    },
++    async get(...args) { calls.push(args); },
++  };
++  load('../services/api.ts', {
++    require(name) { return name === 'axios' ? { default: axios } : { clearLocalAuth() {} }; },
++    localStorage: { getItem() { return token; } }, document: { cookie },
++  });
++  return { calls, options, request };
++}
++
++test('session API uses same-origin cookies and Axios CSRF headers without a local token', async () => {
++  const api = client('XSRF-TOKEN=encrypted-token');
++  assert.equal(api.options.baseURL, '');
++  assert.equal(api.options.withCredentials, true);
++  assert.equal(api.options.withXSRFToken, undefined);
++  const request = await api.request({ method: 'post', headers: {} });
++  assert.equal(request.headers.Authorization, undefined);
++  assert.equal(api.calls.length, 0);
++});
++
++test('session mutations bootstrap the CSRF cookie when absent', async () => {
++  for (const method of ['post', 'put', 'patch', 'delete']) {
++    const api = client();
++    await api.request({ method, headers: {} });
++    assert.equal(api.calls.length, 1);
++    assert.equal(api.calls[0][0], '/sanctum/csrf-cookie');
++    assert.equal(api.calls[0][1].withCredentials, true);
++  }
++});
++
++test('read requests do not bootstrap CSRF and password-login bearer tokens remain supported', async () => {
++  const api = client('', 'existing-personal-token');
++  const request = await api.request({ method: 'get', headers: {} });
++  assert.equal(request.headers.Authorization, 'Bearer existing-personal-token');
++  assert.equal(api.calls.length, 0);
++});
++
++test('browser storage is optional for session-based API authentication', async () => {
++  let request;
++  load('../services/api.ts', {
++    require(name) {
++      return name === 'axios' ? { default: { create: () => ({ interceptors: {
++        request: { use(fn) { request = fn; } }, response: { use() {} },
++      } }) } } : { clearLocalAuth() {} };
++    },
++    localStorage: { getItem() { throw new Error('storage blocked'); } }, document: { cookie: 'XSRF-TOKEN=token' },
++  });
++  const config = await request({ method: 'get', headers: {} });
++  assert.equal(config.headers.Authorization, undefined);
++});
++
++function gate({ status = 200, token, cookie = 'doxa_hrms_session=encrypted', failure = false } = {}) {
++  const calls = [];
++  const { middleware } = load('../middleware.ts', {
++    require() { return { NextResponse: { next: () => 'next', redirect: (url) => url.pathname } }; },
++    process: { env: { HRM_BACKEND_URL: 'http://private-backend:8000' } },
++    Headers, URL, AbortSignal,
++    async fetch(url, options) {
++      calls.push({ url, options });
++      if (failure) throw new Error('backend unavailable');
++      return { ok: status >= 200 && status < 300 };
++    },
++  });
++  return {
++    calls,
++    run(path = '/dashboard') {
++      return middleware({
++        url: `https://hrm.example.test${path}`,
++        nextUrl: { pathname: path, origin: 'https://hrm.example.test' },
++        cookies: { get: () => token ? { value: token } : undefined },
++        headers: { get: () => cookie },
++      });
++    },
++  };
++}
++
++test('dashboard accepts a server-verified Laravel session without a JS authentication token', async () => {
++  const auth = gate();
++  assert.equal(await auth.run(), 'next');
++  assert.equal(auth.calls[0].url, 'http://private-backend:8000/api/auth/me');
++  const options = auth.calls[0].options;
++  assert.equal(options.headers.get('Cookie'), 'doxa_hrms_session=encrypted');
++  assert.equal(options.headers.get('Origin'), 'https://hrm.example.test');
++  assert.equal(options.headers.get('Authorization'), null);
++  assert.equal(options.cache, 'no-store');
++  assert.equal(options.redirect, 'error');
++});
++
++test('unverified cookies and bearer tokens do not grant dashboard access', async () => {
++  const auth = gate({ status: 401, token: 'forged' });
++  assert.equal(await auth.run(), '/login');
++  assert.equal(auth.calls[0].options.headers.get('Authorization'), 'Bearer forged');
++});
++
++test('existing password bearer authentication still reaches the dashboard', async () => {
++  const auth = gate({ token: 'existing-personal-token', cookie: 'auth_token=existing-personal-token' });
++  assert.equal(await auth.run(), 'next');
++  assert.equal(auth.calls[0].options.headers.get('Authorization'), 'Bearer existing-personal-token');
++});
++
++test('backend failure denies dashboard access', async () => {
++  assert.equal(await gate({ failure: true }).run(), '/login');
++});
++
++test('login redirects verified users but public pages need no authentication check', async () => {
++  const auth = gate();
++  assert.equal(await auth.run('/login'), '/dashboard');
++  assert.equal(await auth.run('/careers'), 'next');
++  assert.equal(auth.calls.length, 1);
++  assert.equal(await gate({ status: 401 }).run('/login'), 'next');
++});

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { User, Lock, Bell, Globe, Check, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2, DollarSign, Plus, Trash2 } from 'lucide-react'
+import { User, Lock, Bell, Globe, Check, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2, DollarSign, Plus, Trash2, ShieldCheck, ShieldAlert, Users, Search, RefreshCw, Key, Shield } from 'lucide-react'
 import api from '@/services/api'
 import { getPayrollSettings, updatePayrollSettings, type PayrollSettings } from '@/services/payroll'
 
@@ -15,7 +15,22 @@ interface UserProfile {
   created_at?: string
 }
 
-type Tab = 'profile' | 'security' | 'notifications' | 'preferences' | 'payroll'
+type Tab = 'profile' | 'access' | 'security' | 'notifications' | 'preferences' | 'payroll'
+
+export interface ManagedUser {
+  id: number
+  name: string
+  email: string
+  role: string
+  is_active: boolean
+  has_access: boolean
+  is_current_user: boolean
+  is_root_admin: boolean
+  auth_type: 'doxa_sso' | 'direct'
+  doxa_subject: string | null
+  doxa_issuer: string | null
+  created_at?: string
+}
 
 // ─── Notification prefs (localStorage) ───────────────────────────────────────
 
@@ -382,6 +397,340 @@ function PreferencesSection() {
   )
 }
 
+
+// ─── User Access Management Section ──────────────────────────────────────────
+
+function UserAccessSection({ currentUser }: { currentUser: UserProfile | null }) {
+  const [users, setUsers] = useState<ManagedUser[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<'all' | 'sso' | 'granted' | 'restricted'>('all')
+  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  const fetchUsers = async () => {
+    setLoading(true)
+    setFeedback(null)
+    try {
+      const res = await api.get('/api/settings/users')
+      setUsers(res.data)
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err.response?.data?.message || 'Failed to load users for access control.',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchUsers()
+  }, [])
+
+  const handleToggleAccess = async (targetUser: ManagedUser, grant: boolean) => {
+    setActionLoadingId(targetUser.id)
+    setFeedback(null)
+    try {
+      const res = await api.put(`/api/settings/users/${targetUser.id}/access`, {
+        granted: grant,
+      })
+      // Update local state
+      setUsers(prev =>
+        prev.map(u =>
+          u.id === targetUser.id
+            ? { ...u, has_access: grant, role: grant ? 'hr_admin' : 'applicant' }
+            : u
+        )
+      )
+      setFeedback({
+        type: 'success',
+        message: res.data.message || (grant ? `Granted access to ${targetUser.name}` : `Revoked access from ${targetUser.name}`),
+      })
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err.response?.data?.message || 'Failed to update user access privileges.',
+      })
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  // Filter logic
+  const filteredUsers = users.filter(u => {
+    const matchesSearch =
+      u.name.toLowerCase().includes(search.toLowerCase()) ||
+      u.email.toLowerCase().includes(search.toLowerCase())
+    if (!matchesSearch) return false
+
+    if (filter === 'sso') return u.auth_type === 'doxa_sso'
+    if (filter === 'granted') return u.has_access
+    if (filter === 'restricted') return !u.has_access
+    return true
+  })
+
+  const ssoCount = users.filter(u => u.auth_type === 'doxa_sso').length
+  const grantedCount = users.filter(u => u.has_access).length
+  const restrictedCount = users.filter(u => !u.has_access).length
+
+  return (
+    <div className="space-y-6">
+      {/* Header Info */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-violet-600" />
+            User Access & Permissions
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Manage HRM privileges for Central IAM SSO users and local staff accounts.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={fetchUsers}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:text-gray-900 shadow-sm transition-all disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-violet-600' : ''}`} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Info notice about SSO safety & boundary */}
+      <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-4 text-xs text-violet-900 flex items-start gap-3">
+        <Key className="h-5 w-5 text-violet-600 flex-shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="font-semibold text-violet-950">Central IAM Single Sign-On Governance</p>
+          <p className="text-violet-800 leading-relaxed">
+            When users sign in from the Central IAM User Management System, they are provisioned with restricted applicant status by default for security. As the primary Doxa administrator, you can grant them full HRM access below to allow them to view employees, attendance, payroll, and recruitment metrics.
+          </p>
+        </div>
+      </div>
+
+      {feedback && (
+        <Alert type={feedback.type} message={feedback.message} />
+      )}
+
+      {/* Filters and Search */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name or email..."
+            className="w-full h-9 pl-9 pr-3 rounded-xl border border-gray-200 bg-white text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 transition-all"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          <button
+            type="button"
+            onClick={() => setFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              filter === 'all'
+                ? 'bg-violet-600 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            All ({users.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('sso')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              filter === 'sso'
+                ? 'bg-violet-600 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Central IAM SSO ({ssoCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('granted')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              filter === 'granted'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Full Access ({grantedCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('restricted')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              filter === 'restricted'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Restricted ({restrictedCount})
+          </button>
+        </div>
+      </div>
+
+      {/* Users Table / List */}
+      <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <Loader2 className="h-7 w-7 text-violet-600 animate-spin" />
+            <p className="text-xs text-gray-400">Loading user privileges...</p>
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+            <Users className="h-10 w-10 text-gray-300 mb-2" />
+            <p className="text-sm font-semibold text-gray-700">No users found</p>
+            <p className="text-xs text-gray-400 mt-1 max-w-xs">
+              No user accounts match your search or selected filter.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-500 font-semibold uppercase tracking-wider text-[10px]">
+                  <th className="px-4 py-3">User & Identity</th>
+                  <th className="px-4 py-3">Account Source</th>
+                  <th className="px-4 py-3">HRM Privilege Status</th>
+                  <th className="px-4 py-3 text-right">Access Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredUsers.map(u => {
+                  const isBusy = actionLoadingId === u.id
+                  const isRoot = u.is_root_admin
+                  const isCurrent = u.is_current_user || (currentUser?.id === u.id)
+                  const initials = u.name
+                    ? u.name.trim().split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                    : 'U'
+
+                  return (
+                    <tr key={u.id} className="hover:bg-violet-50/20 transition-colors">
+                      {/* Name & Email */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs flex-shrink-0 ${
+                            u.auth_type === 'doxa_sso'
+                              ? 'bg-violet-100 text-violet-700 border border-violet-200'
+                              : 'bg-gray-100 text-gray-700 border border-gray-200'
+                          }`}>
+                            {initials}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-900 text-sm">{u.name}</span>
+                              {isCurrent && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-violet-100 text-violet-700 border border-violet-200">
+                                  You
+                                </span>
+                              )}
+                              {isRoot && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-900 text-white">
+                                  Primary Root Admin
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-gray-500 text-xs mt-0.5">{u.email}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Source */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        {u.auth_type === 'doxa_sso' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-100">
+                            <Key className="h-3 w-3 text-violet-600" />
+                            Central IAM SSO
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-gray-50 text-gray-600 border border-gray-200">
+                            <User className="h-3 w-3 text-gray-400" />
+                            Direct Account
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Privilege Status */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        {u.has_access ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                              Full Access
+                            </span>
+                            <span className="text-[11px] text-gray-400">({u.role})</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                              <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
+                              Restricted
+                            </span>
+                            <span className="text-[11px] text-gray-400">(no records access)</span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                        {isRoot ? (
+                          <span className="text-[11px] text-gray-400 font-medium italic">
+                            Protected System Account
+                          </span>
+                        ) : isCurrent ? (
+                          <span className="text-[11px] text-gray-400 font-medium italic">
+                            Active Admin Session
+                          </span>
+                        ) : u.has_access ? (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAccess(u, false)}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Revoke access to employees, payroll, and metrics"
+                          >
+                            {isBusy ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <ShieldAlert className="h-3.5 w-3.5" />
+                            )}
+                            Revoke Access
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAccess(u, true)}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 active:scale-95 transition-all shadow-sm hover:shadow-violet-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Grant HR Admin privileges so they can see employees and management features"
+                          >
+                            {isBusy ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <ShieldCheck className="h-3.5 w-3.5" />
+                            )}
+                            Grant Access
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
 type TaxBracket = {
   from: number
   to: number | null
@@ -643,6 +992,7 @@ function PayrollSection() {
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'profile', label: 'Profile', icon: User },
+  { key: 'access', label: 'User Access', icon: ShieldCheck },
   { key: 'security', label: 'Security', icon: Lock },
   { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'preferences', label: 'Preferences', icon: Globe },
@@ -665,8 +1015,14 @@ export default function SettingsPage() {
     ? user.name.trim().split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
     : 'HR'
 
+  const isHrAdmin = user?.role === 'hr_admin' || user?.email === 'admin@doxa.com'
+  const visibleTabs = TABS.filter(t => {
+    if (t.key === 'access') return isHrAdmin
+    return true
+  })
+
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className={`${tab === 'access' ? 'max-w-4xl' : 'max-w-3xl'} space-y-6 transition-all duration-200`}>
 
       {/* ── Profile banner ── */}
       <div className="rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 p-6 text-white flex items-center gap-5 relative overflow-hidden">
@@ -696,7 +1052,7 @@ export default function SettingsPage() {
       <div className="card overflow-hidden">
         {/* Tab bar */}
         <div className="flex border-b border-gray-100 overflow-x-auto">
-          {TABS.map(t => (
+          {visibleTabs.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
@@ -720,6 +1076,7 @@ export default function SettingsPage() {
                 ? <ProfileSection user={user} onUpdate={setUser} />
                 : <p className="text-sm text-gray-400">Could not load profile.</p>
           )}
+          {tab === 'access' && <UserAccessSection currentUser={user} />}
           {tab === 'security' && <SecuritySection />}
           {tab === 'notifications' && <NotificationsSection />}
           {tab === 'preferences' && <PreferencesSection />}

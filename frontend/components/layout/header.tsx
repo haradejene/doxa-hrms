@@ -98,13 +98,17 @@ export function Header({ onMenuClick, user }: HeaderProps) {
 
   const handleLogout = async () => {
     try {
-      await api.post("/api/auth/logout");
+      const res = await api.post("/api/auth/logout");
+      clearLocalAuth();
+      if (res.data?.iam_logout_url) {
+        window.location.href = res.data.iam_logout_url;
+        return;
+      }
     } catch (error) {
       console.error("Logout request failed");
-    } finally {
       clearLocalAuth();
-      window.location.href = "/login";
     }
+    window.location.href = "/login";
   };
 
   return (
