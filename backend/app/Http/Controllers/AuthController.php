@@ -108,12 +108,8 @@ class AuthController extends Controller
                 $request->session()->regenerateToken();
             }
 
-            $iamIssuer = rtrim(config('services.doxa.issuer') ?? env('DOXA_ISSUER', 'https://localhost:8443'), '/');
-            $hrmFrontend = rtrim(config('hrm.frontend_url', env('HRM_FRONTEND_URL', 'https://localhost:3443')), '/');
-
             return response()->json([
                 'message' => 'Logged out successfully',
-                'iam_logout_url' => $iamIssuer.'/logout?redirect_uri='.urlencode($hrmFrontend.'/login'),
             ]);
         } catch (\Exception $e) {
             return response()->json([

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Auth\DoxaAccountResolver;
+use Doxa\Laravel\Authorization\AuthorizationOptions;
 use Doxa\Laravel\DoxaClient;
 use Doxa\Laravel\Exceptions\ConfigurationException;
 use Doxa\Laravel\Exceptions\DoxaException;
@@ -18,7 +19,7 @@ final class DoxaLoginController extends Controller
     {
         try {
             // Resolve inside the safe boundary, including configuration failures.
-            return app(DoxaClient::class)->beginLogin();
+            return app(DoxaClient::class)->beginLogin(AuthorizationOptions::selectAccount());
         } catch (DoxaException $exception) {
             // Laravel's routing pipeline renders thrown exceptions before outer
             // middleware can catch them. Return only the SDK's safe category.
