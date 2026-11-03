@@ -20,6 +20,10 @@ class VerifyCsrfToken extends Middleware
      */
     protected function inExceptArray($request)
     {
+        if ($request->is('api/auth/logout')) {
+            return true;
+        }
+
         if ($request->is('api/*') && $request->hasSession()
             && ($request->hasCookie(config('session.cookie'))
                 || $this->app['auth']->guard('web')->check())) {
